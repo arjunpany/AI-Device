@@ -119,8 +119,11 @@ class NoteDisplayWindow(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.title("AI Generated Notes")
-        self.geometry("900x700")
         self.configure(bg="#1e1e2e")
+        if getattr(parent, "kiosk", False):
+            self.attributes("-fullscreen", True)
+        else:
+            self.geometry("900x700")
         self._build_ui()
 
     def _build_ui(self):
@@ -228,9 +231,19 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("AI Lecture Note-Taker")
-        self.geometry("600x480")
-        self.resizable(False, False)
         self.configure(bg="#1e1e2e")
+
+        # Kiosk mode: fullscreen, no window decorations, no way to accidentally exit.
+        # Enabled by default; set KIOSK=0 to run in a normal window (e.g. for testing).
+        self.kiosk = os.environ.get("KIOSK", "1") != "0"
+        if self.kiosk:
+            self.attributes("-fullscreen", True)
+            self.config(cursor="arrow")
+            # Emergency exit so the device isn't permanently locked: Ctrl+Shift+Q
+            self.bind("<Control-Shift-Q>", lambda e: self.destroy())
+        else:
+            self.geometry("600x480")
+            self.resizable(False, False)
 
         self.recorder = AudioRecorder()
         self.is_recording = False

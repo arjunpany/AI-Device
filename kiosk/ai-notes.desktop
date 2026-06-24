@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=AI Lecture Note-Taker
+Comment=Auto-launch the note-taker in kiosk mode on boot
+Exec=/home/pi/AI-Device/run.sh
+X-GNOME-Autostart-enabled=true
+Terminal=false
