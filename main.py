@@ -31,30 +31,89 @@ def get_whisper_model():
     return _whisper_model
 
 
+def list_input_devices():
+    """Return [(index, name, channels)] for every device that can record."""
+    devices = []
+    for idx, dev in enumerate(sd.query_devices()):
+        if dev["max_input_channels"] > 0:
+            devices.append((idx, dev["name"], dev["max_input_channels"]))
+    return devices
+
+
+def resolve_input_device():
+    """Pick which microphone to use.
+
+    Priority:
+      1. The AUDIO_DEVICE env var (an index number, or part of a device name)
+      2. The system default input device
+    Returns (index_or_None, human_readable_name).
+    """
+    inputs = list_input_devices()
+    if not inputs:
+        return None, "NO INPUT DEVICE FOUND"
+
+    pref = os.environ.get("AUDIO_DEVICE", "").strip()
+    if pref:
+        if pref.isdigit():
+            idx = int(pref)
+            for i, name, _ in inputs:
+                if i == idx:
+                    return idx, name
+        else:
+            for i, name, _ in inputs:
+                if pref.lower() in name.lower():
+                    return i, name
+
+    # Fall back to the system default input device.
+    try:
+        default_idx = sd.default.device[0]
+        if default_idx is not None and default_idx >= 0:
+            name = sd.query_devices(default_idx)["name"]
+            return default_idx, name
+    except Exception:
+        pass
+
+    # Last resort: the first available input.
+    return inputs[0][0], inputs[0][1]
+
+
 class AudioRecorder:
     def __init__(self):
         self.recording = False
         self.frames = []
         self._stream = None
+        self.device_index, self.device_name = resolve_input_device()
+        self.current_level = 0.0  # 0.0–1.0, live input loudness for the meter
 
-    def start(self):
-        self.frames = []
-        self.recording = True
+    def _callback(self, indata, frame_count, time_info, status):
+        # Track loudness always, so the meter shows the mic is live even
+        # before recording. Only buffer frames while actually recording.
+        self.current_level = float(np.sqrt(np.mean(indata ** 2)))
+        if self.recording:
+            self.frames.append(indata.copy())
 
-        def callback(indata, frame_count, time_info, status):
-            if self.recording:
-                self.frames.append(indata.copy())
-
+    def open_monitor(self):
+        """Open a persistent stream just for live level monitoring."""
+        if self._stream is not None or self.device_index is None:
+            return
         self._stream = sd.InputStream(
             samplerate=SAMPLE_RATE,
             channels=CHANNELS,
             dtype="float32",
-            callback=callback,
+            device=self.device_index,
+            callback=self._callback,
         )
         self._stream.start()
 
+    def start(self):
+        self.frames = []
+        self.open_monitor()  # reuse the monitor stream for capture
+        self.recording = True
+
     def stop(self):
         self.recording = False
+
+    def close(self):
         if self._stream:
             self._stream.stop()
             self._stream.close()
@@ -254,6 +313,13 @@ class App(tk.Tk):
         self._build_ui()
         self._poll_queue()
 
+        # Start live mic monitoring so the level meter works immediately.
+        try:
+            self.recorder.open_monitor()
+        except Exception as e:
+            self._log(f"Could not open microphone: {e}")
+        self._update_level()
+
     def _build_ui(self):
         title_lbl = tk.Label(
             self,
@@ -271,7 +337,24 @@ class App(tk.Tk):
             bg="#1e1e2e",
             fg="#6c7086",
         )
-        subtitle_lbl.pack(pady=(0, 30))
+        subtitle_lbl.pack(pady=(0, 16))
+
+        # Show which microphone the app is actually using.
+        dev_name = self.recorder.device_name
+        dev_ok = self.recorder.device_index is not None
+        self.device_lbl = tk.Label(
+            self,
+            text=("🎤 Mic: " + dev_name) if dev_ok else "⚠ NO MICROPHONE DETECTED",
+            font=("Helvetica", 11),
+            bg="#1e1e2e",
+            fg="#a6e3a1" if dev_ok else "#f38ba8",
+        )
+        self.device_lbl.pack(pady=(0, 8))
+
+        # Live input-level meter so you can SEE the mic picking up sound.
+        self.level_canvas = tk.Canvas(self, width=300, height=14, bg="#181825", highlightthickness=0)
+        self.level_canvas.pack(pady=(0, 16))
+        self._level_bar = self.level_canvas.create_rectangle(0, 0, 0, 14, fill="#a6e3a1", outline="")
 
         self.indicator = tk.Canvas(self, width=20, height=20, bg="#1e1e2e", highlightthickness=0)
         self.indicator.pack()
@@ -333,6 +416,16 @@ class App(tk.Tk):
             pady=8,
         )
         self.log_area.pack(fill=tk.X, padx=20, pady=(12, 20))
+
+    def _update_level(self):
+        # Scale RMS (typically 0–0.3) up to a 0–1 range for the bar.
+        level = min(1.0, self.recorder.current_level * 6)
+        width = int(level * 300)
+        self.level_canvas.coords(self._level_bar, 0, 0, width, 14)
+        # Green when quiet, yellow/red as it gets loud.
+        color = "#a6e3a1" if level < 0.6 else ("#f9e2af" if level < 0.85 else "#f38ba8")
+        self.level_canvas.itemconfig(self._level_bar, fill=color)
+        self.after(60, self._update_level)
 
     def _log(self, msg):
         self.log_area.configure(state=tk.NORMAL)
@@ -440,7 +533,29 @@ class App(tk.Tk):
         self.after(100, self._poll_queue)
 
 
+def check_audio():
+    """Print detected input devices and which one the app will use."""
+    print("=== Audio input devices the Pi can see ===\n")
+    inputs = list_input_devices()
+    if not inputs:
+        print("  NONE FOUND. Is your microphone plugged in?")
+        print("  Try:  arecord -l    (lists ALSA capture hardware)")
+        return
+    for idx, name, ch in inputs:
+        print(f"  [{idx}] {name}  ({ch} channel(s))")
+
+    chosen_idx, chosen_name = resolve_input_device()
+    print(f"\n=> The app will record from: [{chosen_idx}] {chosen_name}")
+    print("\nTo force a different one, set AUDIO_DEVICE to its number or part")
+    print("of its name, e.g.:  AUDIO_DEVICE=2 python3 main.py")
+    print('                or:  AUDIO_DEVICE="USB" python3 main.py')
+
+
 def main():
+    import sys
+    if "--check-audio" in sys.argv or "--list-devices" in sys.argv:
+        check_audio()
+        return
     app = App()
     app.mainloop()
 
