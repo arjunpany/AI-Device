@@ -16,14 +16,14 @@ sudo apt-get install -y -q \
     ffmpeg \
     python3-numpy
 
-# Python packages
+# Python packages (--break-system-packages needed on Raspberry Pi OS Bookworm+)
 echo "[2/4] Installing Python packages..."
-pip3 install --upgrade pip
-pip3 install -r requirements.txt
+pip3 install --break-system-packages --upgrade pip
+pip3 install --break-system-packages -r requirements.txt
 
-# Whisper model pre-download
+# Whisper model pre-download (faster-whisper: lightweight, no PyTorch)
 echo "[3/4] Pre-downloading Whisper 'base' model..."
-python3 -c "import whisper; whisper.load_model('base')"
+python3 -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8')"
 
 echo "[4/4] Setup complete!"
 echo ""

@@ -11,7 +11,7 @@ from tkinter import scrolledtext, ttk
 import numpy as np
 import sounddevice as sd
 from scipy.io.wavfile import write as wav_write
-import whisper
+from faster_whisper import WhisperModel
 import anthropic
 import tempfile
 import os
@@ -27,7 +27,10 @@ _whisper_model = None
 def get_whisper_model():
     global _whisper_model
     if _whisper_model is None:
-        _whisper_model = whisper.load_model("base")
+        # faster-whisper: lightweight, no PyTorch, runs well on a Raspberry Pi.
+        # int8 compute keeps memory low. "base" is a good speed/accuracy balance;
+        # use "tiny" on a Pi 3 for more speed.
+        _whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
     return _whisper_model
 
 
@@ -133,8 +136,8 @@ def transcribe_audio(audio_array):
         audio_int16 = (audio_array * 32767).astype(np.int16)
         wav_write(tmp_path, SAMPLE_RATE, audio_int16)
         model = get_whisper_model()
-        result = model.transcribe(tmp_path, fp16=False)
-        return result["text"].strip()
+        segments, _info = model.transcribe(tmp_path)
+        return " ".join(seg.text for seg in segments).strip()
     finally:
         os.unlink(tmp_path)
 
