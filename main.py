@@ -387,34 +387,41 @@ class App(tk.Tk):
         btn_frame = tk.Frame(self, bg="#1e1e2e")
         btn_frame.pack()
 
+        # Large tap targets so they're easy to press with a finger on a
+        # Pi touchscreen. width/height are in text units; big padding gives
+        # a generous touch area.
         self.start_btn = tk.Button(
             btn_frame,
-            text="▶  Start Recording",
+            text="▶  Start",
             command=self._on_start,
-            font=("Helvetica", 14, "bold"),
+            font=("Helvetica", 20, "bold"),
             bg="#a6e3a1",
             fg="#1e1e2e",
+            activebackground="#94d68f",
             relief=tk.FLAT,
-            padx=28,
-            pady=12,
+            width=10,
+            padx=20,
+            pady=28,
             cursor="hand2",
         )
-        self.start_btn.pack(side=tk.LEFT, padx=10)
+        self.start_btn.pack(side=tk.LEFT, padx=14)
 
         self.stop_btn = tk.Button(
             btn_frame,
-            text="■  Stop & Generate",
+            text="■  Stop",
             command=self._on_stop,
-            font=("Helvetica", 14, "bold"),
+            font=("Helvetica", 20, "bold"),
             bg="#f38ba8",
             fg="#1e1e2e",
+            activebackground="#e07b98",
             relief=tk.FLAT,
-            padx=28,
-            pady=12,
+            width=10,
+            padx=20,
+            pady=28,
             cursor="hand2",
             state=tk.DISABLED,
         )
-        self.stop_btn.pack(side=tk.LEFT, padx=10)
+        self.stop_btn.pack(side=tk.LEFT, padx=14)
 
         self.progress = ttk.Progressbar(self, mode="indeterminate", length=400)
         self.progress.pack(pady=(30, 0))
