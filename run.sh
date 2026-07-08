@@ -12,10 +12,10 @@ cd "$APP_DIR"
 
 export KIOSK=1   # fullscreen, no window chrome
 
-# Use the USB microphone (matched by name). Change "USB" to a device number
-# or a different name substring if your mic reports differently. Run
+# Use the ReSpeaker microphone (matched by name). Change this to a device
+# number or a different name substring if your mic reports differently. Run
 # `python3 main.py --check-audio` to see the exact names.
-export AUDIO_DEVICE="USB"
+export AUDIO_DEVICE="ReSpeaker"
 
 # Disable screen blanking / power saving so the display stays on (X11 only).
 if command -v xset >/dev/null 2>&1; then
