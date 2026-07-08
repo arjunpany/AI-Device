@@ -325,8 +325,18 @@ class App(tk.Tk):
         self._notes_window = None
         self._notes_buffer = []
 
+        # Optional acoustic "knock to start" (off by default — unreliable).
+        # Enable with KNOCK_START=1; tune sensitivity with KNOCK_THRESHOLD (0-1).
+        self._knock_enabled = os.environ.get("KNOCK_START", "0") == "1"
+        self._knock_threshold = float(os.environ.get("KNOCK_THRESHOLD", "0.9"))
+        self._knock_cooldown = 0
+
         self._build_ui()
         self._poll_queue()
+
+        # Double-tap (or double-click) anywhere on the screen to start/stop.
+        # Works with both a touchscreen and a mouse.
+        self.bind("<Double-Button-1>", self._on_double_tap)
 
         # Start live mic monitoring so the level meter works immediately.
         try:
@@ -334,6 +344,15 @@ class App(tk.Tk):
         except Exception as e:
             self._log(f"Could not open microphone: {e}")
         self._update_level()
+
+    def _on_double_tap(self, event=None):
+        # Toggle recording: start if idle, stop if recording.
+        if self.is_recording:
+            if self.stop_btn["state"] != tk.DISABLED:
+                self._on_stop()
+        else:
+            if self.start_btn["state"] != tk.DISABLED:
+                self._on_start()
 
     def _build_ui(self):
         title_lbl = tk.Label(
@@ -377,7 +396,7 @@ class App(tk.Tk):
 
         self.status_lbl = tk.Label(
             self,
-            text="Press Start to begin recording",
+            text="Press Start — or double-tap the screen — to begin",
             font=("Helvetica", 12),
             bg="#1e1e2e",
             fg="#6c7086",
@@ -447,6 +466,19 @@ class App(tk.Tk):
         # Green when quiet, yellow/red as it gets loud.
         color = "#a6e3a1" if level < 0.6 else ("#f9e2af" if level < 0.85 else "#f38ba8")
         self.level_canvas.itemconfig(self._level_bar, fill=color)
+
+        # Optional "knock/tap to start": if enabled with KNOCK_START=1, a sudden
+        # loud spike while idle starts recording. NOTE: this cannot tell a finger
+        # tap apart from a clap, bump, or loud word, so expect false triggers.
+        if self._knock_enabled and not self.is_recording:
+            if self._knock_cooldown > 0:
+                self._knock_cooldown -= 1
+            elif level > self._knock_threshold:
+                self._knock_cooldown = 30  # ~1.8s lockout to avoid double-fire
+                if self.start_btn["state"] != tk.DISABLED:
+                    self._log("Knock detected — starting recording.")
+                    self._on_start()
+
         self.after(60, self._update_level)
 
     def _log(self, msg):
