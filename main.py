@@ -28,9 +28,17 @@ def get_whisper_model():
     global _whisper_model
     if _whisper_model is None:
         # faster-whisper: lightweight, no PyTorch, runs well on a Raspberry Pi.
-        # int8 compute keeps memory low. "base" is a good speed/accuracy balance;
-        # use "tiny" on a Pi 3 for more speed.
-        _whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
+        # Model size and thread count are tunable via env vars for speed:
+        #   WHISPER_MODEL=tiny   -> ~3-4x faster than "base" (slightly less accurate)
+        #   WHISPER_THREADS=4    -> use all 4 Pi cores (defaults to all available)
+        model_size = os.environ.get("WHISPER_MODEL", "tiny")
+        threads = int(os.environ.get("WHISPER_THREADS", str(os.cpu_count() or 4)))
+        _whisper_model = WhisperModel(
+            model_size,
+            device="cpu",
+            compute_type="int8",
+            cpu_threads=threads,
+        )
     return _whisper_model
 
 
@@ -136,7 +144,11 @@ def transcribe_audio(audio_array):
         audio_int16 = (audio_array * 32767).astype(np.int16)
         wav_write(tmp_path, SAMPLE_RATE, audio_int16)
         model = get_whisper_model()
-        segments, _info = model.transcribe(tmp_path)
+        segments, _info = model.transcribe(
+            tmp_path,
+            beam_size=1,       # greedy decoding: faster than the default beam search
+            vad_filter=True,   # skip silent gaps so there's less audio to process
+        )
         return " ".join(seg.text for seg in segments).strip()
     finally:
         os.unlink(tmp_path)

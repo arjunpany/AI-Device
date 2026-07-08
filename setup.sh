@@ -23,7 +23,7 @@ pip3 install --break-system-packages -r requirements.txt
 
 # Whisper model pre-download (faster-whisper: lightweight, no PyTorch)
 echo "[3/4] Pre-downloading Whisper 'base' model..."
-python3 -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8')"
+python3 -c "from faster_whisper import WhisperModel; WhisperModel('tiny', device='cpu', compute_type='int8')"
 
 echo "[4/4] Setup complete!"
 echo ""
