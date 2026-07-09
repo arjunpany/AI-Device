@@ -98,11 +98,14 @@ class AudioRecorder:
     # Crest factor = peak / RMS within the block. A finger tap is impulsive
     # (one sharp spike, so peak >> RMS -> high crest). Speech/vowels spread
     # energy out (peak ~ RMS -> low crest), so this rejects voices like "hello".
-    TAP_CREST_MIN = float(os.environ.get("TAP_CREST_MIN", "6.0"))
+    TAP_CREST_MIN = float(os.environ.get("TAP_CREST_MIN", "3.0"))
     # High-frequency ratio: taps are broadband/clicky (lots of sample-to-sample
     # change); voiced speech is dominated by low frequencies. Rejects vowels.
-    TAP_HF_MIN = float(os.environ.get("TAP_HF_MIN", "0.35"))
+    TAP_HF_MIN = float(os.environ.get("TAP_HF_MIN", "0.20"))
     TAP_REFRACTORY = 0.09  # seconds to ignore after a detected tap
+    # Set TAP_DEBUG=1 to log the measured peak/crest/hf of every loud sound,
+    # so the thresholds can be tuned to your specific microphone.
+    TAP_DEBUG = os.environ.get("TAP_DEBUG", "0") == "1"
 
     def __init__(self):
         self.recording = False
@@ -145,6 +148,12 @@ class AudioRecorder:
         if is_onset:
             self._last_tap_t = now
             self.taps.append(now)
+        # Debug: report the numbers for any reasonably loud sound so thresholds
+        # can be tuned. "PASS" means it counted as a tap.
+        if self.TAP_DEBUG and peak > self.TAP_ABS_MIN:
+            tag = "PASS" if is_onset else "reject"
+            print(f"[tap {tag}] peak={peak:.3f} crest={crest:.1f} hf={hf:.2f}",
+                  flush=True)
         # Update background AFTER the test (slow attack so a tap doesn't inflate it).
         self._bg_level = 0.97 * self._bg_level + 0.03 * peak
 
