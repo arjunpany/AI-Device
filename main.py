@@ -20,7 +20,9 @@ import os
 
 SAMPLE_RATE = 16000
 CHANNELS = 1
-CLAUDE_MODEL = "claude-opus-4-8"
+# Fast model for quick note generation. Override with NOTES_MODEL, e.g.
+# NOTES_MODEL=claude-opus-4-8 for higher quality (but slower).
+CLAUDE_MODEL = os.environ.get("NOTES_MODEL", "claude-haiku-4-5")
 
 _whisper_model = None
 
@@ -93,6 +95,13 @@ class AudioRecorder:
     # Tap onset detection tuning.
     TAP_ABS_MIN = float(os.environ.get("TAP_ABS_MIN", "0.12"))  # min peak to count
     TAP_RATIO = float(os.environ.get("TAP_RATIO", "4.0"))       # peak vs background
+    # Crest factor = peak / RMS within the block. A finger tap is impulsive
+    # (one sharp spike, so peak >> RMS -> high crest). Speech/vowels spread
+    # energy out (peak ~ RMS -> low crest), so this rejects voices like "hello".
+    TAP_CREST_MIN = float(os.environ.get("TAP_CREST_MIN", "6.0"))
+    # High-frequency ratio: taps are broadband/clicky (lots of sample-to-sample
+    # change); voiced speech is dominated by low frequencies. Rejects vowels.
+    TAP_HF_MIN = float(os.environ.get("TAP_HF_MIN", "0.35"))
     TAP_REFRACTORY = 0.09  # seconds to ignore after a detected tap
 
     def __init__(self):
@@ -115,14 +124,22 @@ class AudioRecorder:
             self.frames.append(indata.copy())
 
         # --- Tap onset detection ---
-        # A finger tap is a short, sharp spike: peak amplitude that jumps well
-        # above the recent background level. Requiring the spike to stand out
-        # from background (ratio) plus an absolute floor rejects steady noise.
-        peak = float(np.max(np.abs(indata)))
+        # A finger tap is a short, sharp, broadband spike. We reject anything
+        # that isn't impulsive (crest factor) and clicky (high-frequency), so
+        # voices, claps and hums don't trigger it.
+        x = indata[:, 0] if indata.ndim > 1 else indata
+        peak = float(np.max(np.abs(x)))
+        rms = float(np.sqrt(np.mean(x ** 2))) + 1e-9
+        crest = peak / rms
+        # High-frequency content: average sample-to-sample change vs. amplitude.
+        # Impulsive/clicky sounds are high; voiced speech (low pitch) is low.
+        hf = float(np.mean(np.abs(np.diff(x)))) / (float(np.mean(np.abs(x))) + 1e-9)
         now = time.monotonic()
         is_onset = (
             peak > self.TAP_ABS_MIN
             and peak > self._bg_level * self.TAP_RATIO
+            and crest > self.TAP_CREST_MIN
+            and hf > self.TAP_HF_MIN
             and (now - self._last_tap_t) > self.TAP_REFRACTORY
         )
         if is_onset:
@@ -212,8 +229,7 @@ Generate comprehensive, well-structured notes:"""
 
     with client.messages.stream(
         model=CLAUDE_MODEL,
-        max_tokens=4096,
-        thinking={"type": "adaptive"},
+        max_tokens=2048,
         messages=[{"role": "user", "content": prompt}],
     ) as stream:
         for text in stream.text_stream:
