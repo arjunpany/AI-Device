@@ -205,8 +205,31 @@ def transcribe_audio(audio_array):
         os.unlink(tmp_path)
 
 
+def load_api_key():
+    """Find the Anthropic API key from the environment or a local file.
+
+    Checks, in order:
+      1. ANTHROPIC_API_KEY environment variable
+      2. api_key.txt sitting next to this script (easiest for non-terminal use)
+    """
+    key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if key:
+        return key
+    key_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "api_key.txt")
+    if os.path.exists(key_file):
+        with open(key_file) as f:
+            return f.read().strip()
+    return None
+
+
 def generate_notes(transcript, status_callback):
-    client = anthropic.Anthropic()
+    api_key = load_api_key()
+    if not api_key:
+        raise RuntimeError(
+            "No API key found. Create a file called api_key.txt in the "
+            "AI-Device folder and paste your key into it."
+        )
+    client = anthropic.Anthropic(api_key=api_key)
 
     prompt = f"""You are an expert note-taker. Below is a transcript from a lecture or speech.
 Create beautiful, organized notes from this content. Your notes should:
