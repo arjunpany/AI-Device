@@ -17,11 +17,12 @@ export KIOSK=1   # fullscreen, no window chrome
 # `python3 main.py --check-audio` to see the exact names.
 export AUDIO_DEVICE="ReSpeaker"
 
-# Disable screen blanking / power saving so the display stays on (X11 only).
+# Disable screen blanking / power saving so the display stays on (X11 only;
+# harmless no-op under Wayland, so errors are silenced).
 if command -v xset >/dev/null 2>&1; then
-    xset s off          # no screensaver
-    xset -dpms          # no display power management
-    xset s noblank      # don't blank the video device
+    xset s off 2>/dev/null || true
+    xset -dpms 2>/dev/null || true
+    xset s noblank 2>/dev/null || true
 fi
 
 # Hide the mouse cursor when idle, if unclutter is installed.
