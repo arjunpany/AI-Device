@@ -33,7 +33,9 @@ def get_whisper_model():
         # Model size and thread count are tunable via env vars for speed:
         #   WHISPER_MODEL=tiny   -> ~3-4x faster than "base" (slightly less accurate)
         #   WHISPER_THREADS=4    -> use all 4 Pi cores (defaults to all available)
-        model_size = os.environ.get("WHISPER_MODEL", "tiny")
+        # tiny.en = English-only tiny model: faster AND more accurate for
+        # English than plain "tiny". Use WHISPER_MODEL=tiny for other languages.
+        model_size = os.environ.get("WHISPER_MODEL", "tiny.en")
         threads = int(os.environ.get("WHISPER_THREADS", str(os.cpu_count() or 4)))
         _whisper_model = WhisperModel(
             model_size,
@@ -148,8 +150,10 @@ def transcribe_audio(audio_array):
         model = get_whisper_model()
         segments, _info = model.transcribe(
             tmp_path,
+            language=os.environ.get("WHISPER_LANG", "en"),  # skip auto-detect
             beam_size=1,       # greedy decoding: faster than the default beam search
             vad_filter=True,   # skip silent gaps so there's less audio to process
+            condition_on_previous_text=False,  # less work per segment
         )
         return " ".join(seg.text for seg in segments).strip()
     finally:
@@ -225,14 +229,33 @@ class NoteDisplayWindow(tk.Toplevel):
         self._build_ui()
 
     def _build_ui(self):
+        # Top bar with title and an X button to go back to the main screen.
+        top_bar = tk.Frame(self, bg="#1e1e2e")
+        top_bar.pack(fill=tk.X, pady=(10, 8), padx=12)
+
         header = tk.Label(
-            self,
+            top_bar,
             text="AI Generated Notes",
             font=("Helvetica", 18, "bold"),
             bg="#1e1e2e",
             fg="#cdd6f4",
         )
-        header.pack(pady=(16, 8))
+        header.pack(side=tk.LEFT, padx=(4, 0))
+
+        x_btn = tk.Button(
+            top_bar,
+            text="✕",
+            command=self.destroy,
+            font=("Helvetica", 18, "bold"),
+            bg="#f38ba8",
+            fg="#1e1e2e",
+            activebackground="#e07b98",
+            relief=tk.FLAT,
+            width=3,
+            pady=4,
+            cursor="hand2",
+        )
+        x_btn.pack(side=tk.RIGHT)
 
         frame = tk.Frame(self, bg="#1e1e2e")
         frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 16))
@@ -250,6 +273,15 @@ class NoteDisplayWindow(tk.Toplevel):
             pady=16,
         )
         self.text_area.pack(fill=tk.BOTH, expand=True)
+
+        # Touch drag-to-scroll, like a phone: press and drag up/down to scroll.
+        self._drag_last_y = None
+        self.text_area.bind("<ButtonPress-1>", self._on_drag_start)
+        self.text_area.bind("<B1-Motion>", self._on_drag_move)
+        # Mouse wheel / trackpad scrolling too.
+        self.text_area.bind("<MouseWheel>", self._on_wheel)
+        self.text_area.bind("<Button-4>", lambda e: self.text_area.yview_scroll(-3, "units"))
+        self.text_area.bind("<Button-5>", lambda e: self.text_area.yview_scroll(3, "units"))
 
         self._configure_tags()
 
@@ -318,6 +350,25 @@ class NoteDisplayWindow(tk.Toplevel):
                 self.text_area.insert(tk.END, line.lstrip("#").strip() + "\n", "header")
             else:
                 self.text_area.insert(tk.END, line + "\n", "normal")
+
+    def _on_drag_start(self, event):
+        self._drag_last_y = event.y
+        return "break"  # don't start a text selection on touch
+
+    def _on_drag_move(self, event):
+        if self._drag_last_y is None:
+            self._drag_last_y = event.y
+            return "break"
+        # Scroll by how far the finger moved since the last event.
+        dy = event.y - self._drag_last_y
+        self._drag_last_y = event.y
+        # Drag down -> content moves down (scroll up), like a phone.
+        self.text_area.yview_scroll(int(-dy / 3) or (-1 if dy > 0 else 1), "units")
+        return "break"
+
+    def _on_wheel(self, event):
+        self.text_area.yview_scroll(-1 if event.delta > 0 else 1, "units")
+        return "break"
 
     def _copy_notes(self):
         content = self.text_area.get("1.0", tk.END)
