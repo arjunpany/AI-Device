@@ -6,6 +6,11 @@ Records audio, transcribes with Whisper, generates notes with Claude.
 
 import threading
 import queue
+import re
+import glob
+import smtplib
+import datetime
+from email.message import EmailMessage
 import tkinter as tk
 from tkinter import scrolledtext, ttk
 import numpy as np
@@ -23,7 +28,110 @@ CHANNELS = 1
 # NOTES_MODEL=claude-opus-4-8 for higher quality (but slower).
 CLAUDE_MODEL = os.environ.get("NOTES_MODEL", "claude-haiku-4-5")
 
+# Where saved notes live (a "notes" folder next to this script).
+NOTES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "notes")
+
 _whisper_model = None
+
+
+# --------------------------------------------------------------------------
+# Saved-notes storage
+# --------------------------------------------------------------------------
+
+def _derive_title(text):
+    """Use the first meaningful line of the notes as a short title."""
+    for line in text.splitlines():
+        clean = line.strip().strip("#=-•* ").strip()
+        if clean:
+            return clean[:60]
+    return "Untitled Notes"
+
+
+def save_note(text):
+    """Save a note to a timestamped file. Returns the file path."""
+    os.makedirs(NOTES_DIR, exist_ok=True)
+    now = datetime.datetime.now()
+    title = _derive_title(text)
+    # Make a filesystem-safe slug from the title.
+    slug = re.sub(r"[^A-Za-z0-9]+", "_", title).strip("_")[:40] or "note"
+    fname = now.strftime("%Y-%m-%d_%H%M%S_") + slug + ".txt"
+    path = os.path.join(NOTES_DIR, fname)
+    with open(path, "w") as f:
+        f.write(text)
+    return path
+
+
+def list_notes():
+    """Return saved notes as [(path, title, date_str)], newest first."""
+    if not os.path.isdir(NOTES_DIR):
+        return []
+    out = []
+    for path in sorted(glob.glob(os.path.join(NOTES_DIR, "*.txt")), reverse=True):
+        try:
+            with open(path) as f:
+                text = f.read()
+        except OSError:
+            continue
+        title = _derive_title(text)
+        ts = datetime.datetime.fromtimestamp(os.path.getmtime(path))
+        out.append((path, title, ts.strftime("%b %d, %Y  %I:%M %p")))
+    return out
+
+
+def delete_note(path):
+    if os.path.exists(path):
+        os.remove(path)
+
+
+# --------------------------------------------------------------------------
+# Email sending (SMTP)
+# --------------------------------------------------------------------------
+
+def load_email_config():
+    """Return (address, app_password, host, port) for sending mail.
+
+    Reads EMAIL_ADDRESS / EMAIL_APP_PASSWORD from the environment, or from
+    an email_config.txt file next to this script (line 1 = address,
+    line 2 = app password). Defaults to Gmail's SMTP server.
+    """
+    addr = os.environ.get("EMAIL_ADDRESS", "").strip()
+    pw = os.environ.get("EMAIL_APP_PASSWORD", "").strip()
+    if not (addr and pw):
+        cfg = os.path.join(os.path.dirname(os.path.abspath(__file__)), "email_config.txt")
+        if os.path.exists(cfg):
+            with open(cfg) as f:
+                lines = [ln.strip() for ln in f if ln.strip()]
+            if len(lines) >= 2:
+                addr, pw = lines[0], lines[1]
+    host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+    port = int(os.environ.get("SMTP_PORT", "587"))
+    return addr, pw, host, port
+
+
+def send_note_email(path, recipient):
+    """Email a saved note (as body + attachment) to recipient."""
+    addr, pw, host, port = load_email_config()
+    if not (addr and pw):
+        raise RuntimeError(
+            "Email isn't set up. Create email_config.txt with your Gmail "
+            "address on line 1 and an app password on line 2."
+        )
+    with open(path) as f:
+        body = f.read()
+    title = _derive_title(body)
+
+    msg = EmailMessage()
+    msg["Subject"] = f"Notes: {title}"
+    msg["From"] = addr
+    msg["To"] = recipient
+    msg.set_content(body)
+    msg.add_attachment(body.encode("utf-8"), maintype="text",
+                       subtype="plain", filename=os.path.basename(path))
+
+    with smtplib.SMTP(host, port, timeout=30) as server:
+        server.starttls()
+        server.login(addr, pw)
+        server.send_message(msg)
 
 
 def get_whisper_model():
@@ -376,6 +484,229 @@ class NoteDisplayWindow(tk.Toplevel):
         self.clipboard_append(content)
 
 
+class OnScreenKeyboard(tk.Toplevel):
+    """A finger-friendly keyboard for typing (e.g. an email address)."""
+
+    ROWS = [
+        list("1234567890"),
+        list("qwertyuiop"),
+        list("asdfghjkl"),
+        list("zxcvbnm"),
+    ]
+
+    def __init__(self, parent, prompt, on_submit, initial=""):
+        super().__init__(parent)
+        self.on_submit = on_submit
+        self.configure(bg="#1e1e2e")
+        self.transient(parent)
+        self.grab_set()
+        if getattr(parent, "kiosk", False) or getattr(getattr(parent, "master", None), "kiosk", False):
+            self.attributes("-fullscreen", True)
+        else:
+            self.geometry("820x520")
+
+        tk.Label(self, text=prompt, font=("Helvetica", 16, "bold"),
+                 bg="#1e1e2e", fg="#cdd6f4").pack(pady=(16, 8))
+
+        self.var = tk.StringVar(value=initial)
+        entry = tk.Entry(self, textvariable=self.var, font=("Courier New", 20),
+                         bg="#181825", fg="#cdd6f4", insertbackground="#cdd6f4",
+                         relief=tk.FLAT, justify=tk.CENTER)
+        entry.pack(fill=tk.X, padx=24, pady=(0, 12), ipady=8)
+
+        keys = tk.Frame(self, bg="#1e1e2e")
+        keys.pack(expand=True)
+        for row in self.ROWS:
+            rf = tk.Frame(keys, bg="#1e1e2e")
+            rf.pack(pady=3)
+            for ch in row:
+                self._key(rf, ch, lambda c=ch: self._append(c))
+
+        # Bottom row: special keys.
+        special = tk.Frame(keys, bg="#1e1e2e")
+        special.pack(pady=3)
+        self._key(special, "@", lambda: self._append("@"))
+        self._key(special, ".", lambda: self._append("."))
+        self._key(special, "_", lambda: self._append("_"))
+        self._key(special, "-", lambda: self._append("-"))
+        self._key(special, "⌫", self._backspace, width=4, bg="#f9e2af")
+        self._key(special, "@gmail.com", lambda: self._append("@gmail.com"),
+                  width=11, bg="#89b4fa")
+
+        # Action buttons.
+        actions = tk.Frame(self, bg="#1e1e2e")
+        actions.pack(pady=(10, 16))
+        tk.Button(actions, text="Cancel", command=self.destroy,
+                  font=("Helvetica", 15, "bold"), bg="#45475a", fg="#cdd6f4",
+                  relief=tk.FLAT, width=10, pady=12, cursor="hand2").pack(side=tk.LEFT, padx=10)
+        tk.Button(actions, text="Send ✉", command=self._submit,
+                  font=("Helvetica", 15, "bold"), bg="#a6e3a1", fg="#1e1e2e",
+                  relief=tk.FLAT, width=10, pady=12, cursor="hand2").pack(side=tk.LEFT, padx=10)
+
+    def _key(self, parent, label, cmd, width=3, bg="#313244"):
+        tk.Button(parent, text=label, command=cmd, font=("Helvetica", 15, "bold"),
+                  bg=bg, fg="#cdd6f4" if bg in ("#313244",) else "#1e1e2e",
+                  activebackground="#585b70", relief=tk.FLAT, width=width, pady=10,
+                  cursor="hand2").pack(side=tk.LEFT, padx=3)
+
+    def _append(self, ch):
+        self.var.set(self.var.get() + ch)
+
+    def _backspace(self):
+        self.var.set(self.var.get()[:-1])
+
+    def _submit(self):
+        value = self.var.get().strip()
+        if value:
+            cb = self.on_submit
+            self.destroy()
+            cb(value)
+
+
+class SavedNotesWindow(tk.Toplevel):
+    """Browse saved notes: open, email, or delete each one."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.app = parent
+        self.title("Saved Notes")
+        self.configure(bg="#1e1e2e")
+        if getattr(parent, "kiosk", False):
+            self.attributes("-fullscreen", True)
+        else:
+            self.geometry("900x700")
+
+        # Top bar.
+        top = tk.Frame(self, bg="#1e1e2e")
+        top.pack(fill=tk.X, pady=(10, 8), padx=12)
+        tk.Label(top, text="Saved Notes", font=("Helvetica", 18, "bold"),
+                 bg="#1e1e2e", fg="#cdd6f4").pack(side=tk.LEFT, padx=(4, 0))
+        tk.Button(top, text="✕", command=self.destroy, font=("Helvetica", 18, "bold"),
+                  bg="#f38ba8", fg="#1e1e2e", relief=tk.FLAT, width=3, pady=4,
+                  cursor="hand2").pack(side=tk.RIGHT)
+
+        self.status = tk.Label(self, text="", font=("Helvetica", 12),
+                               bg="#1e1e2e", fg="#94e2d5")
+        self.status.pack(pady=(0, 4))
+
+        # Scrollable list area (Canvas + inner frame), with touch drag.
+        container = tk.Frame(self, bg="#181825")
+        container.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
+        self.canvas = tk.Canvas(container, bg="#181825", highlightthickness=0)
+        self.canvas.pack(fill=tk.BOTH, expand=True)
+        self.list_frame = tk.Frame(self.canvas, bg="#181825")
+        self._win = self.canvas.create_window((0, 0), window=self.list_frame, anchor="nw")
+        self.list_frame.bind("<Configure>",
+                             lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+        self.canvas.bind("<Configure>",
+                        lambda e: self.canvas.itemconfig(self._win, width=e.width))
+        # Touch/mouse scrolling.
+        self._drag_y = None
+        for w in (self.canvas, self.list_frame):
+            w.bind("<ButtonPress-1>", self._drag_start)
+            w.bind("<B1-Motion>", self._drag_move)
+            w.bind("<Button-4>", lambda e: self.canvas.yview_scroll(-3, "units"))
+            w.bind("<Button-5>", lambda e: self.canvas.yview_scroll(3, "units"))
+
+        self.refresh()
+
+    def _drag_start(self, e):
+        self._drag_y = e.y_root
+
+    def _drag_move(self, e):
+        if self._drag_y is not None:
+            dy = e.y_root - self._drag_y
+            self._drag_y = e.y_root
+            self.canvas.yview_scroll(int(-dy / 3) or (-1 if dy > 0 else 1), "units")
+
+    def refresh(self):
+        for child in self.list_frame.winfo_children():
+            child.destroy()
+        notes = list_notes()
+        if not notes:
+            tk.Label(self.list_frame, text="No saved notes yet.",
+                     font=("Helvetica", 14), bg="#181825", fg="#6c7086").pack(pady=40)
+            return
+        for path, title, date_str in notes:
+            self._add_row(path, title, date_str)
+
+    def _add_row(self, path, title, date_str):
+        row = tk.Frame(self.list_frame, bg="#1e1e2e")
+        row.pack(fill=tk.X, padx=8, pady=6)
+
+        info = tk.Frame(row, bg="#1e1e2e")
+        info.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10, pady=8)
+        tk.Label(info, text=title, font=("Helvetica", 14, "bold"),
+                 bg="#1e1e2e", fg="#cdd6f4", anchor="w").pack(fill=tk.X)
+        tk.Label(info, text=date_str, font=("Helvetica", 10),
+                 bg="#1e1e2e", fg="#6c7086", anchor="w").pack(fill=tk.X)
+
+        btns = tk.Frame(row, bg="#1e1e2e")
+        btns.pack(side=tk.RIGHT, padx=8)
+        tk.Button(btns, text="Open", command=lambda p=path: self._open(p),
+                  font=("Helvetica", 12, "bold"), bg="#89b4fa", fg="#1e1e2e",
+                  relief=tk.FLAT, width=6, pady=8, cursor="hand2").pack(side=tk.LEFT, padx=4)
+        tk.Button(btns, text="Email", command=lambda p=path: self._email(p),
+                  font=("Helvetica", 12, "bold"), bg="#a6e3a1", fg="#1e1e2e",
+                  relief=tk.FLAT, width=6, pady=8, cursor="hand2").pack(side=tk.LEFT, padx=4)
+        tk.Button(btns, text="Delete", command=lambda p=path: self._delete(p),
+                  font=("Helvetica", 12, "bold"), bg="#f38ba8", fg="#1e1e2e",
+                  relief=tk.FLAT, width=6, pady=8, cursor="hand2").pack(side=tk.LEFT, padx=4)
+
+    def _open(self, path):
+        with open(path) as f:
+            text = f.read()
+        win = NoteDisplayWindow(self.app)
+        win.set_full_text(text)
+
+    def _email(self, path):
+        default = os.environ.get("DEFAULT_EMAIL", "")
+        OnScreenKeyboard(self, "Type the email address to send to:",
+                         lambda addr: self._do_send(path, addr), initial=default)
+
+    def _do_send(self, path, addr):
+        self.status.configure(text=f"Sending to {addr}...", fg="#f9e2af")
+
+        def worker():
+            try:
+                send_note_email(path, addr)
+                self.after(0, lambda: self.status.configure(
+                    text=f"✓ Sent to {addr}", fg="#a6e3a1"))
+            except Exception as e:
+                self.after(0, lambda: self.status.configure(
+                    text=f"✗ {e}", fg="#f38ba8"))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _delete(self, path):
+        # Simple tap-to-confirm dialog.
+        dlg = tk.Toplevel(self)
+        dlg.configure(bg="#1e1e2e")
+        dlg.transient(self)
+        dlg.grab_set()
+        if getattr(self.app, "kiosk", False):
+            dlg.attributes("-fullscreen", True)
+        else:
+            dlg.geometry("420x200")
+        tk.Label(dlg, text="Delete this note?", font=("Helvetica", 18, "bold"),
+                 bg="#1e1e2e", fg="#cdd6f4").pack(pady=(50, 24))
+        row = tk.Frame(dlg, bg="#1e1e2e")
+        row.pack()
+        tk.Button(row, text="Cancel", command=dlg.destroy,
+                  font=("Helvetica", 14, "bold"), bg="#45475a", fg="#cdd6f4",
+                  relief=tk.FLAT, width=9, pady=12, cursor="hand2").pack(side=tk.LEFT, padx=10)
+
+        def do():
+            delete_note(path)
+            dlg.destroy()
+            self.refresh()
+            self.status.configure(text="Note deleted.", fg="#f38ba8")
+
+        tk.Button(row, text="Delete", command=do,
+                  font=("Helvetica", 14, "bold"), bg="#f38ba8", fg="#1e1e2e",
+                  relief=tk.FLAT, width=9, pady=12, cursor="hand2").pack(side=tk.LEFT, padx=10)
+
+
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -533,6 +864,22 @@ class App(tk.Tk):
         )
         self.stop_btn.pack(side=tk.LEFT, padx=14)
 
+        # Open the saved-notes library.
+        self.notes_btn = tk.Button(
+            self,
+            text="📁  Saved Notes",
+            command=self._open_saved_notes,
+            font=("Helvetica", 14, "bold"),
+            bg="#89b4fa",
+            fg="#1e1e2e",
+            activebackground="#74a0e0",
+            relief=tk.FLAT,
+            padx=20,
+            pady=10,
+            cursor="hand2",
+        )
+        self.notes_btn.pack(pady=(20, 0))
+
         self.progress = ttk.Progressbar(self, mode="indeterminate", length=400)
         self.progress.pack(pady=(30, 0))
 
@@ -558,6 +905,9 @@ class App(tk.Tk):
         color = "#a6e3a1" if level < 0.6 else ("#f9e2af" if level < 0.85 else "#f38ba8")
         self.level_canvas.itemconfig(self._level_bar, fill=color)
         self.after(60, self._update_level)
+
+    def _open_saved_notes(self):
+        SavedNotesWindow(self)
 
     def _log(self, msg):
         self.log_area.configure(state=tk.NORMAL)
@@ -666,6 +1016,12 @@ class App(tk.Tk):
                     self._log("Notes generated successfully.")
                     if self._notes_window:
                         self._notes_window.set_full_text(payload)
+                    # Auto-save every note to the notes folder.
+                    try:
+                        path = save_note(payload)
+                        self._log(f"Saved: {os.path.basename(path)}")
+                    except Exception as e:
+                        self._log(f"Could not save note: {e}")
                     self.start_btn.configure(state=tk.NORMAL)
 
         except queue.Empty:

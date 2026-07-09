@@ -1,0 +1,7 @@
+# Saved notes (kept locally on the device, not in git)
+notes/
+# Secrets — never commit these
+api_key.txt
+email_config.txt
+__pycache__/
+*.pyc
