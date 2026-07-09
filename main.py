@@ -407,9 +407,10 @@ class App(tk.Tk):
         self._notes_window = None
         self._notes_buffer = []
 
-        # Acoustic double-tap control: the mic listens for two finger taps on
-        # the screen and toggles recording. On by default; TAP_LISTEN=0 disables.
-        self._tap_listen = os.environ.get("TAP_LISTEN", "1") == "1"
+        # Acoustic double-tap control: unreliable (speech false-triggers it),
+        # so OFF by default now that a physical button is the trigger. Turn it
+        # back on with TAP_LISTEN=1 if you want to experiment.
+        self._tap_listen = os.environ.get("TAP_LISTEN", "0") == "1"
         self._recent_taps = []           # timestamps of recent detected taps
         self._tap_min_gap = 0.10         # two taps must be at least this far apart
         self._tap_max_gap = 0.60         # ...and at most this far apart
@@ -421,6 +422,12 @@ class App(tk.Tk):
         # Double-tap (or double-click) anywhere on the screen to start/stop.
         # Works with both a touchscreen and a mouse.
         self.bind("<Double-Button-1>", self._on_double_tap)
+        # Spacebar also toggles (handy if a keyboard is attached).
+        self.bind("<space>", lambda e: self._on_double_tap())
+
+        # Physical GPIO push button: press to start/stop. Wire a button between
+        # BUTTON_PIN and GND. Default GPIO17 (also the ReSpeaker 2-Mic HAT button).
+        self._setup_gpio_button()
 
         # Start live mic monitoring so the level meter works immediately.
         try:
@@ -428,6 +435,22 @@ class App(tk.Tk):
         except Exception as e:
             self._log(f"Could not open microphone: {e}")
         self._update_level()
+
+    def _setup_gpio_button(self):
+        """Wire a physical push button (GPIO) to start/stop, if available."""
+        pin = int(os.environ.get("BUTTON_PIN", "17"))
+        try:
+            from gpiozero import Button
+            # Button between the pin and GND; internal pull-up (default).
+            self._gpio_button = Button(pin, pull_up=True, bounce_time=0.05)
+            # gpiozero fires this on a background thread, so hand off to the
+            # Tk thread safely via the queue instead of touching widgets here.
+            self._gpio_button.when_pressed = lambda: self._notes_queue.put(("button", None))
+            self._log(f"Physical button ready on GPIO{pin}.")
+        except Exception as e:
+            # No gpiozero, not on a Pi, or pin in use — just skip it.
+            self._gpio_button = None
+            self._log(f"No GPIO button (GPIO{pin}): {e}")
 
     def _on_double_tap(self, event=None):
         # Toggle recording: start if idle, stop if recording.
@@ -480,7 +503,7 @@ class App(tk.Tk):
 
         self.status_lbl = tk.Label(
             self,
-            text="Double-tap the screen (or press Start) to begin",
+            text="Press the button (or Start) to begin",
             font=("Helvetica", 12),
             bg="#1e1e2e",
             fg="#6c7086",
@@ -650,6 +673,9 @@ class App(tk.Tk):
                 if msg_type == "status":
                     self._set_status(payload, "#89b4fa")
                     self._log(payload)
+
+                elif msg_type == "button":
+                    self._on_double_tap()
 
                 elif msg_type == "error":
                     self.progress.stop()
