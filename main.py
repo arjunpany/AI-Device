@@ -656,6 +656,12 @@ class App(tk.Tk):
                     self._set_status(payload, "#f38ba8")
                     self._log(f"ERROR: {payload}")
                     self.start_btn.configure(state=tk.NORMAL)
+                    # Show the error ON the notes window too, since it covers
+                    # the main screen and the user can't see the log otherwise.
+                    if self._notes_window:
+                        self._notes_window.set_full_text(
+                            "=== Something went wrong ===\n\n" + str(payload)
+                        )
 
                 elif msg_type == "transcript":
                     self._log(f"Transcript preview: {payload[:120]}...")
