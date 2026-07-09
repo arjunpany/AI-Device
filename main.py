@@ -6,7 +6,6 @@ Records audio, transcribes with Whisper, generates notes with Claude.
 
 import threading
 import queue
-import time
 import tkinter as tk
 from tkinter import scrolledtext, ttk
 import numpy as np
@@ -92,21 +91,6 @@ def resolve_input_device():
 
 
 class AudioRecorder:
-    # Tap onset detection tuning.
-    TAP_ABS_MIN = float(os.environ.get("TAP_ABS_MIN", "0.12"))  # min peak to count
-    TAP_RATIO = float(os.environ.get("TAP_RATIO", "4.0"))       # peak vs background
-    # Crest factor = peak / RMS within the block. A finger tap is impulsive
-    # (one sharp spike, so peak >> RMS -> high crest). Speech/vowels spread
-    # energy out (peak ~ RMS -> low crest), so this rejects voices like "hello".
-    TAP_CREST_MIN = float(os.environ.get("TAP_CREST_MIN", "3.0"))
-    # High-frequency ratio: taps are broadband/clicky (lots of sample-to-sample
-    # change); voiced speech is dominated by low frequencies. Rejects vowels.
-    TAP_HF_MIN = float(os.environ.get("TAP_HF_MIN", "0.20"))
-    TAP_REFRACTORY = 0.09  # seconds to ignore after a detected tap
-    # Set TAP_DEBUG=1 to log the measured peak/crest/hf of every loud sound,
-    # so the thresholds can be tuned to your specific microphone.
-    TAP_DEBUG = os.environ.get("TAP_DEBUG", "0") == "1"
-
     def __init__(self):
         self.recording = False
         self.frames = []
@@ -114,53 +98,12 @@ class AudioRecorder:
         self.device_index, self.device_name = resolve_input_device()
         self.current_level = 0.0  # 0.0–1.0, live input loudness for the meter
 
-        # Tap (finger-on-screen) onset detection state.
-        self._bg_level = 0.0        # slow-moving background loudness
-        self._last_tap_t = 0.0
-        self.taps = []              # monotonic timestamps of detected taps
-
     def _callback(self, indata, frame_count, time_info, status):
         # Track loudness always, so the meter shows the mic is live even
         # before recording. Only buffer frames while actually recording.
         self.current_level = float(np.sqrt(np.mean(indata ** 2)))
         if self.recording:
             self.frames.append(indata.copy())
-
-        # --- Tap onset detection ---
-        # A finger tap is a short, sharp, broadband spike. We reject anything
-        # that isn't impulsive (crest factor) and clicky (high-frequency), so
-        # voices, claps and hums don't trigger it.
-        x = indata[:, 0] if indata.ndim > 1 else indata
-        peak = float(np.max(np.abs(x)))
-        rms = float(np.sqrt(np.mean(x ** 2))) + 1e-9
-        crest = peak / rms
-        # High-frequency content: average sample-to-sample change vs. amplitude.
-        # Impulsive/clicky sounds are high; voiced speech (low pitch) is low.
-        hf = float(np.mean(np.abs(np.diff(x)))) / (float(np.mean(np.abs(x))) + 1e-9)
-        now = time.monotonic()
-        is_onset = (
-            peak > self.TAP_ABS_MIN
-            and peak > self._bg_level * self.TAP_RATIO
-            and crest > self.TAP_CREST_MIN
-            and hf > self.TAP_HF_MIN
-            and (now - self._last_tap_t) > self.TAP_REFRACTORY
-        )
-        if is_onset:
-            self._last_tap_t = now
-            self.taps.append(now)
-        # Debug: report the numbers for any reasonably loud sound so thresholds
-        # can be tuned. "PASS" means it counted as a tap.
-        if self.TAP_DEBUG and peak > self.TAP_ABS_MIN:
-            tag = "PASS" if is_onset else "reject"
-            print(f"[tap {tag}] peak={peak:.3f} crest={crest:.1f} hf={hf:.2f}",
-                  flush=True)
-        # Update background AFTER the test (slow attack so a tap doesn't inflate it).
-        self._bg_level = 0.97 * self._bg_level + 0.03 * peak
-
-    def consume_taps(self):
-        """Return and clear the taps detected since the last call."""
-        taps, self.taps = self.taps, []
-        return taps
 
     def open_monitor(self):
         """Open a persistent stream just for live level monitoring."""
@@ -171,7 +114,6 @@ class AudioRecorder:
             channels=CHANNELS,
             dtype="float32",
             device=self.device_index,
-            blocksize=512,  # ~32ms blocks: fine enough to time taps apart
             callback=self._callback,
         )
         self._stream.start()
@@ -407,15 +349,6 @@ class App(tk.Tk):
         self._notes_window = None
         self._notes_buffer = []
 
-        # Acoustic double-tap control: unreliable (speech false-triggers it),
-        # so OFF by default now that a physical button is the trigger. Turn it
-        # back on with TAP_LISTEN=1 if you want to experiment.
-        self._tap_listen = os.environ.get("TAP_LISTEN", "0") == "1"
-        self._recent_taps = []           # timestamps of recent detected taps
-        self._tap_min_gap = 0.10         # two taps must be at least this far apart
-        self._tap_max_gap = 0.60         # ...and at most this far apart
-        self._tap_lockout_until = 0.0    # ignore taps briefly after a toggle
-
         self._build_ui()
         self._poll_queue()
 
@@ -473,7 +406,7 @@ class App(tk.Tk):
 
         subtitle_lbl = tk.Label(
             self,
-            text="Double-tap the screen to start / stop",
+            text="Tap Start to record · Tap Stop for notes",
             font=("Helvetica", 12),
             bg="#1e1e2e",
             fg="#6c7086",
@@ -573,32 +506,7 @@ class App(tk.Tk):
         # Green when quiet, yellow/red as it gets loud.
         color = "#a6e3a1" if level < 0.6 else ("#f9e2af" if level < 0.85 else "#f38ba8")
         self.level_canvas.itemconfig(self._level_bar, fill=color)
-
-        self._check_double_tap()
-        self.after(30, self._update_level)
-
-    def _check_double_tap(self):
-        """Detect two quick finger taps via the mic and toggle recording."""
-        if not self._tap_listen:
-            return
-        now = time.monotonic()
-        new_taps = self.recorder.consume_taps()
-        for t in new_taps:
-            if t < self._tap_lockout_until:
-                continue
-            self._recent_taps.append(t)
-
-        # Drop taps older than the double-tap window.
-        self._recent_taps = [t for t in self._recent_taps if now - t < 1.0]
-
-        if len(self._recent_taps) >= 2:
-            gap = self._recent_taps[-1] - self._recent_taps[-2]
-            if self._tap_min_gap <= gap <= self._tap_max_gap:
-                self._recent_taps = []
-                # Ignore further taps for a moment so the same knocks don't
-                # immediately toggle back.
-                self._tap_lockout_until = now + 1.0
-                self._on_double_tap()
+        self.after(60, self._update_level)
 
     def _log(self, msg):
         self.log_area.configure(state=tk.NORMAL)
