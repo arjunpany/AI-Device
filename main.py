@@ -634,24 +634,27 @@ class SavedNotesWindow(tk.Toplevel):
         row = tk.Frame(self.list_frame, bg="#1e1e2e")
         row.pack(fill=tk.X, padx=8, pady=6)
 
-        info = tk.Frame(row, bg="#1e1e2e")
-        info.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10, pady=8)
-        tk.Label(info, text=title, font=("Helvetica", 14, "bold"),
-                 bg="#1e1e2e", fg="#cdd6f4", anchor="w").pack(fill=tk.X)
-        tk.Label(info, text=date_str, font=("Helvetica", 10),
-                 bg="#1e1e2e", fg="#6c7086", anchor="w").pack(fill=tk.X)
+        # Title + date on top.
+        tk.Label(row, text=title, font=("Helvetica", 14, "bold"),
+                 bg="#1e1e2e", fg="#cdd6f4", anchor="w").pack(fill=tk.X, padx=10, pady=(8, 0))
+        tk.Label(row, text=date_str, font=("Helvetica", 10),
+                 bg="#1e1e2e", fg="#6c7086", anchor="w").pack(fill=tk.X, padx=10)
 
+        # Buttons in a row BELOW the title, so they always fit a narrow screen.
         btns = tk.Frame(row, bg="#1e1e2e")
-        btns.pack(side=tk.RIGHT, padx=8)
+        btns.pack(fill=tk.X, padx=10, pady=(6, 10))
         tk.Button(btns, text="Open", command=lambda p=path: self._open(p),
-                  font=("Helvetica", 12, "bold"), bg="#89b4fa", fg="#1e1e2e",
-                  relief=tk.FLAT, width=6, pady=8, cursor="hand2").pack(side=tk.LEFT, padx=4)
+                  font=("Helvetica", 13, "bold"), bg="#89b4fa", fg="#1e1e2e",
+                  relief=tk.FLAT, pady=10, cursor="hand2").pack(
+                      side=tk.LEFT, expand=True, fill=tk.X, padx=4)
         tk.Button(btns, text="Email", command=lambda p=path: self._email(p),
-                  font=("Helvetica", 12, "bold"), bg="#a6e3a1", fg="#1e1e2e",
-                  relief=tk.FLAT, width=6, pady=8, cursor="hand2").pack(side=tk.LEFT, padx=4)
+                  font=("Helvetica", 13, "bold"), bg="#a6e3a1", fg="#1e1e2e",
+                  relief=tk.FLAT, pady=10, cursor="hand2").pack(
+                      side=tk.LEFT, expand=True, fill=tk.X, padx=4)
         tk.Button(btns, text="Delete", command=lambda p=path: self._delete(p),
-                  font=("Helvetica", 12, "bold"), bg="#f38ba8", fg="#1e1e2e",
-                  relief=tk.FLAT, width=6, pady=8, cursor="hand2").pack(side=tk.LEFT, padx=4)
+                  font=("Helvetica", 13, "bold"), bg="#f38ba8", fg="#1e1e2e",
+                  relief=tk.FLAT, pady=10, cursor="hand2").pack(
+                      side=tk.LEFT, expand=True, fill=tk.X, padx=4)
 
     def _open(self, path):
         with open(path) as f:
