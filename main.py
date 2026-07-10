@@ -512,17 +512,11 @@ Write the full color-coded study notes now:"""
 
 
 def _grab_input(win):
-    """Force a pop-up window to take input focus.
-
-    On touchscreen + Wayland/XWayland, a fullscreen Tk pop-up can open behind
-    the input focus of the main window, so taps go to the wrong surface. This
-    lifts it, forces focus, and grabs input so the pop-up's buttons respond.
-    """
+    """Bring a pop-up to the front. Deliberately does NOT call grab_set(),
+    which can lock touch input on some Wayland/XWayland setups."""
     def do():
         try:
             win.lift()
-            win.focus_force()
-            win.grab_set()
         except Exception:
             pass
     win.after(50, do)
