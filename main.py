@@ -512,10 +512,12 @@ Write the full color-coded study notes now:"""
 
 
 class NoteDisplayWindow(tk.Toplevel):
-    def __init__(self, parent):
+    def __init__(self, parent, allow_save=True):
         super().__init__(parent)
         self.title("AI Generated Notes")
         self.configure(bg="#1e1e2e")
+        self.allow_save = allow_save   # False when viewing an already-saved note
+        self._raw_text = ""            # original notes text, for saving
         if getattr(parent, "kiosk", False):
             self.attributes("-fullscreen", True)
         else:
@@ -582,6 +584,22 @@ class NoteDisplayWindow(tk.Toplevel):
         btn_frame = tk.Frame(self, bg="#1e1e2e")
         btn_frame.pack(pady=(0, 12))
 
+        # Save button — only when viewing freshly generated notes.
+        if self.allow_save:
+            self.save_btn = tk.Button(
+                btn_frame,
+                text="💾  Save",
+                command=self._save_notes,
+                bg="#a6e3a1",
+                fg="#1e1e2e",
+                font=("Helvetica", 12, "bold"),
+                relief=tk.FLAT,
+                padx=24,
+                pady=8,
+                cursor="hand2",
+            )
+            self.save_btn.pack(side=tk.LEFT, padx=8)
+
         copy_btn = tk.Button(
             btn_frame,
             text="Copy Notes",
@@ -629,11 +647,21 @@ class NoteDisplayWindow(tk.Toplevel):
         self.text_area.configure(state=tk.DISABLED)
 
     def set_full_text(self, text):
+        self._raw_text = text
         self.text_area.configure(state=tk.NORMAL)
         self.text_area.delete("1.0", tk.END)
         self._images = []  # keep references so Tk doesn't garbage-collect them
         self._render_formatted(text)
         self.text_area.configure(state=tk.DISABLED)
+
+    def _save_notes(self):
+        if not self._raw_text.strip():
+            return
+        try:
+            save_note(self._raw_text)
+            self.save_btn.configure(text="✓ Saved", bg="#94e2d5", state=tk.DISABLED)
+        except Exception as e:
+            self.save_btn.configure(text=f"Save failed: {e}", bg="#f38ba8")
 
     def _embed_png(self, png_bytes):
         """Insert a PNG image (bytes) inline in the text area."""
@@ -955,7 +983,7 @@ class SavedNotesWindow(tk.Toplevel):
     def _open(self, path):
         with open(path) as f:
             text = f.read()
-        win = NoteDisplayWindow(self.app)
+        win = NoteDisplayWindow(self.app, allow_save=False)
         win.set_full_text(text)
 
     def _email(self, path):
@@ -1424,12 +1452,6 @@ class App(tk.Tk):
                     self._log("Notes generated successfully.")
                     if self._notes_window:
                         self._notes_window.set_full_text(payload)
-                    # Auto-save every note to the notes folder.
-                    try:
-                        path = save_note(payload)
-                        self._log(f"Saved: {os.path.basename(path)}")
-                    except Exception as e:
-                        self._log(f"Could not save note: {e}")
                     self.start_btn.configure(state=tk.NORMAL)
 
         except queue.Empty:
