@@ -35,6 +35,111 @@ _whisper_model = None
 
 
 # --------------------------------------------------------------------------
+# Chart & diagram rendering (matplotlib -> PNG bytes)
+# --------------------------------------------------------------------------
+
+# Colors matched to the dark note background.
+_FIG_BG = "#181825"
+_FG = "#cdd6f4"
+_ACCENTS = ["#89b4fa", "#a6e3a1", "#f9e2af", "#f38ba8", "#cba6f7", "#94e2d5", "#fab387"]
+
+
+def _new_fig(width_px=680, height_px=380):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    dpi = 100
+    fig = plt.figure(figsize=(width_px / dpi, height_px / dpi), dpi=dpi)
+    fig.patch.set_facecolor(_FIG_BG)
+    return fig, plt
+
+
+def _fig_to_png(fig, plt):
+    import io
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", facecolor=_FIG_BG, bbox_inches="tight")
+    plt.close(fig)
+    return buf.getvalue()
+
+
+def render_chart_png(spec):
+    """Render a chart spec dict to PNG bytes. Returns None on failure."""
+    try:
+        fig, plt = _new_fig()
+        ax = fig.add_subplot(111)
+        ax.set_facecolor(_FIG_BG)
+        for spine in ax.spines.values():
+            spine.set_color("#45475a")
+        ax.tick_params(colors=_FG, labelsize=9)
+        ax.xaxis.label.set_color(_FG)
+        ax.yaxis.label.set_color(_FG)
+
+        ctype = spec.get("type", "bar").lower()
+        title = spec.get("title", "")
+        labels = spec.get("x") or spec.get("labels") or []
+        values = spec.get("y") or spec.get("values") or []
+        values = [float(v) for v in values]
+
+        if ctype == "line":
+            ax.plot(labels, values, color=_ACCENTS[0], marker="o", linewidth=2)
+        elif ctype == "pie":
+            ax.pie(values, labels=labels, colors=_ACCENTS,
+                   textprops={"color": _FG, "fontsize": 9}, autopct="%1.0f%%")
+        else:  # bar
+            ax.bar(range(len(values)), values,
+                   color=[_ACCENTS[i % len(_ACCENTS)] for i in range(len(values))])
+            ax.set_xticks(range(len(labels)))
+            ax.set_xticklabels(labels, rotation=20, ha="right")
+
+        if spec.get("xlabel"):
+            ax.set_xlabel(spec["xlabel"])
+        if spec.get("ylabel"):
+            ax.set_ylabel(spec["ylabel"])
+        if title:
+            ax.set_title(title, color=_ACCENTS[0], fontsize=13, fontweight="bold")
+        return _fig_to_png(fig, plt)
+    except Exception:
+        return None
+
+
+def render_flow_png(edges):
+    """Render a simple top-down flowchart from [(src, dst), ...]. PNG bytes."""
+    try:
+        # Nodes in first-appearance order.
+        order = []
+        for a, b in edges:
+            for n in (a, b):
+                if n and n not in order:
+                    order.append(n)
+        if not order:
+            return None
+
+        n = len(order)
+        fig, plt = _new_fig(height_px=max(140, 90 * n))
+        ax = fig.add_subplot(111)
+        ax.set_facecolor(_FIG_BG)
+        ax.axis("off")
+        ax.set_xlim(0, 10)
+        ax.set_ylim(0, n)
+
+        pos = {}
+        for i, name in enumerate(order):
+            y = n - 1 - i + 0.5
+            pos[name] = y
+            ax.text(5, y, name, ha="center", va="center", color="#1e1e2e",
+                    fontsize=11, fontweight="bold", wrap=True,
+                    bbox=dict(boxstyle="round,pad=0.5", facecolor=_ACCENTS[i % len(_ACCENTS)],
+                              edgecolor="none"))
+        for a, b in edges:
+            if a in pos and b in pos:
+                ax.annotate("", xy=(5, pos[b] + 0.32), xytext=(5, pos[a] - 0.32),
+                            arrowprops=dict(arrowstyle="-|>", color=_FG, lw=2))
+        return _fig_to_png(fig, plt)
+    except Exception:
+        return None
+
+
+# --------------------------------------------------------------------------
 # Saved-notes storage
 # --------------------------------------------------------------------------
 
@@ -320,7 +425,23 @@ FORMAT RULES — follow these EXACTLY so the notes display with color coding:
 - Important facts, formulas, equations: start the line with "Important: " or "Formula: "
 - Likely test questions / unclear points: start the line with "Q: "
 - Normal points: start with "- " for bullets
-- Use short lines. Do NOT use markdown tables. Use "->" for arrows/relationships.
+- Use short lines. Do NOT use markdown tables.
+
+DIAGRAMS & CHARTS — include these when they genuinely help understanding:
+- Flowchart / relationship diagram: a fenced block labeled flow, with one
+  arrow per line, e.g.:
+  ```flow
+  Water vapor -> Condensation
+  Condensation -> Clouds
+  Clouds -> Rain
+  ```
+- Chart/graph (bar, line, or pie) when there's data to compare: a fenced block
+  labeled chart containing JSON, e.g.:
+  ```chart
+  {{"type": "bar", "title": "Planet sizes", "x": ["Earth", "Mars"], "y": [1, 0.5], "ylabel": "Relative size"}}
+  ```
+  Use "type": "line" for trends over time, "pie" for proportions. Only include a
+  chart when real numbers/comparisons are in the content — never invent data.
 
 TRANSCRIPT:
 {transcript}
@@ -461,18 +582,58 @@ class NoteDisplayWindow(tk.Toplevel):
     def set_full_text(self, text):
         self.text_area.configure(state=tk.NORMAL)
         self.text_area.delete("1.0", tk.END)
+        self._images = []  # keep references so Tk doesn't garbage-collect them
         self._render_formatted(text)
         self.text_area.configure(state=tk.DISABLED)
+
+    def _embed_png(self, png_bytes):
+        """Insert a PNG image (bytes) inline in the text area."""
+        if not png_bytes:
+            return
+        try:
+            import base64
+            img = tk.PhotoImage(data=base64.b64encode(png_bytes).decode("ascii"))
+            self._images.append(img)  # prevent GC
+            self.text_area.insert(tk.END, "\n")
+            self.text_area.image_create(tk.END, image=img)
+            self.text_area.insert(tk.END, "\n\n")
+        except Exception:
+            pass
 
     def _render_formatted(self, text):
         def clean(s):
             # Strip markdown emphasis markers so they don't show as literal *.
             return s.replace("**", "").replace("__", "")
 
-        for raw in text.split("\n"):
+        lines = text.split("\n")
+        i = 0
+        while i < len(lines):
+            raw = lines[i]
+            stripped_raw = raw.strip()
+
+            # Fenced chart/diagram blocks: ```chart {json} ``` or ```flow ... ```
+            if stripped_raw.startswith("```"):
+                fence = stripped_raw[3:].strip().lower()
+                block = []
+                i += 1
+                while i < len(lines) and not lines[i].strip().startswith("```"):
+                    block.append(lines[i])
+                    i += 1
+                i += 1  # skip closing fence
+                body = "\n".join(block).strip()
+                if fence in ("chart", "graph"):
+                    self._render_chart_block(body)
+                elif fence in ("flow", "diagram", "flowchart"):
+                    self._render_flow_block(body)
+                else:
+                    # Unknown fence: show as plain text.
+                    self.text_area.insert(tk.END, body + "\n", "normal")
+                continue
+
             line = clean(raw)
             stripped = line.strip()
             low = stripped.lower()
+            i += 1
 
             if stripped.startswith("# "):
                 self.text_area.insert(tk.END, stripped[2:].strip() + "\n", "title")
@@ -493,6 +654,25 @@ class NoteDisplayWindow(tk.Toplevel):
                 self.text_area.insert(tk.END, bullet + "\n", tag)
             else:
                 self.text_area.insert(tk.END, line + "\n", "normal")
+
+    def _render_chart_block(self, body):
+        import json
+        try:
+            spec = json.loads(body)
+        except Exception:
+            self.text_area.insert(tk.END, "[chart could not be read]\n", "normal")
+            return
+        self._embed_png(render_chart_png(spec))
+
+    def _render_flow_block(self, body):
+        # Parse lines like "A -> B" (also "A -> B -> C") into edges.
+        edges = []
+        for ln in body.splitlines():
+            parts = [p.strip() for p in re.split(r"->|→", ln) if p.strip()]
+            for a, b in zip(parts, parts[1:]):
+                edges.append((a, b))
+        if edges:
+            self._embed_png(render_flow_png(edges))
 
     def _on_drag_start(self, event):
         self._drag_last_y = event.y
