@@ -30,8 +30,10 @@ if command -v unclutter >/dev/null 2>&1; then
     unclutter -idle 0.5 -root &
 fi
 
-# Wait for an audio input device to appear (USB mics enumerate slowly on boot).
-for i in $(seq 1 10); do
+# Briefly wait for an audio input device to appear (USB mics enumerate
+# slowly on boot). Kept short so the app shows quickly; the app itself
+# also monitors the mic afterward.
+for i in $(seq 1 4); do
     if arecord -l 2>/dev/null | grep -q card; then
         break
     fi
