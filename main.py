@@ -511,6 +511,23 @@ Write the full color-coded study notes now:"""
     return "".join(notes_text)
 
 
+def _grab_input(win):
+    """Force a pop-up window to take input focus.
+
+    On touchscreen + Wayland/XWayland, a fullscreen Tk pop-up can open behind
+    the input focus of the main window, so taps go to the wrong surface. This
+    lifts it, forces focus, and grabs input so the pop-up's buttons respond.
+    """
+    def do():
+        try:
+            win.lift()
+            win.focus_force()
+            win.grab_set()
+        except Exception:
+            pass
+    win.after(50, do)
+
+
 class NoteDisplayWindow(tk.Toplevel):
     def __init__(self, parent, allow_save=True):
         super().__init__(parent)
@@ -523,6 +540,7 @@ class NoteDisplayWindow(tk.Toplevel):
         else:
             self.geometry("900x700")
         self._build_ui()
+        _grab_input(self)
 
     def _build_ui(self):
         # Top bar with title and an X button to go back to the main screen.
@@ -829,6 +847,8 @@ class OnScreenKeyboard(tk.Toplevel):
                   font=("Helvetica", 15, "bold"), bg="#a6e3a1", fg="#1e1e2e",
                   relief=tk.FLAT, width=10, pady=12, cursor="hand2").pack(side=tk.LEFT, padx=10)
 
+        _grab_input(self)
+
     def _build_keys(self):
         for child in self.keys.winfo_children():
             child.destroy()
@@ -933,6 +953,7 @@ class SavedNotesWindow(tk.Toplevel):
             w.bind("<Button-5>", lambda e: self.canvas.yview_scroll(3, "units"))
 
         self.refresh()
+        _grab_input(self)
 
     def _drag_start(self, e):
         self._drag_y = e.y_root
@@ -1067,6 +1088,7 @@ class WifiWindow(tk.Toplevel):
         self.list_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
 
         self.refresh()
+        _grab_input(self)
 
     def refresh(self):
         self.status.configure(text="Scanning for networks...", fg="#f9e2af")
