@@ -559,6 +559,24 @@ class NoteDisplayWindow(OverlayFrame):
         )
         x_btn.pack(side=tk.RIGHT)
 
+        # Save button up here in the top bar so it's always visible on a
+        # small screen (only when viewing freshly generated notes).
+        if self.allow_save:
+            self.save_btn = tk.Button(
+                top_bar,
+                text="💾 Save",
+                command=self._save_notes,
+                font=("Helvetica", 14, "bold"),
+                bg="#a6e3a1",
+                fg="#1e1e2e",
+                activebackground="#94d68f",
+                relief=tk.FLAT,
+                padx=16,
+                pady=4,
+                cursor="hand2",
+            )
+            self.save_btn.pack(side=tk.RIGHT, padx=(0, 10))
+
         frame = tk.Frame(self, bg="#1e1e2e")
         frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 16))
 
@@ -589,22 +607,6 @@ class NoteDisplayWindow(OverlayFrame):
 
         btn_frame = tk.Frame(self, bg="#1e1e2e")
         btn_frame.pack(pady=(0, 12))
-
-        # Save button — only when viewing freshly generated notes.
-        if self.allow_save:
-            self.save_btn = tk.Button(
-                btn_frame,
-                text="💾  Save",
-                command=self._save_notes,
-                bg="#a6e3a1",
-                fg="#1e1e2e",
-                font=("Helvetica", 12, "bold"),
-                relief=tk.FLAT,
-                padx=24,
-                pady=8,
-                cursor="hand2",
-            )
-            self.save_btn.pack(side=tk.LEFT, padx=8)
 
         copy_btn = tk.Button(
             btn_frame,
