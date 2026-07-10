@@ -8,6 +8,7 @@ import threading
 import queue
 import re
 import glob
+import subprocess
 import smtplib
 import datetime
 from email.message import EmailMessage
@@ -237,6 +238,54 @@ def send_note_email(path, recipient):
         server.starttls()
         server.login(addr, pw)
         server.send_message(msg)
+
+
+# --------------------------------------------------------------------------
+# WiFi control (via NetworkManager's nmcli)
+# --------------------------------------------------------------------------
+
+def wifi_scan():
+    """Return a list of nearby WiFi network names (SSIDs), strongest first."""
+    try:
+        out = subprocess.check_output(
+            ["nmcli", "-t", "-f", "SSID,SIGNAL", "device", "wifi", "list"],
+            text=True, timeout=20, stderr=subprocess.DEVNULL)
+    except Exception:
+        return []
+    seen, nets = set(), []
+    for line in out.splitlines():
+        # Format is "SSID:SIGNAL"; SSID may itself contain escaped colons.
+        parts = line.rsplit(":", 1)
+        ssid = parts[0].strip()
+        if ssid and ssid not in seen:
+            seen.add(ssid)
+            nets.append(ssid)
+    return nets
+
+
+def wifi_current():
+    """Return the SSID currently connected to, or None."""
+    try:
+        out = subprocess.check_output(
+            ["nmcli", "-t", "-f", "ACTIVE,SSID", "device", "wifi"],
+            text=True, timeout=10, stderr=subprocess.DEVNULL)
+    except Exception:
+        return None
+    for line in out.splitlines():
+        if line.startswith("yes:"):
+            return line.split(":", 1)[1].strip()
+    return None
+
+
+def wifi_connect(ssid, password):
+    """Connect to a WiFi network. Raises on failure with a readable message."""
+    cmd = ["nmcli", "device", "wifi", "connect", ssid]
+    if password:
+        cmd += ["password", password]
+    result = subprocess.run(cmd, text=True, capture_output=True, timeout=45)
+    if result.returncode != 0:
+        msg = (result.stderr or result.stdout or "connection failed").strip()
+        raise RuntimeError(msg.splitlines()[-1] if msg else "connection failed")
 
 
 def get_whisper_model():
@@ -700,25 +749,33 @@ class NoteDisplayWindow(tk.Toplevel):
 
 
 class OnScreenKeyboard(tk.Toplevel):
-    """A finger-friendly keyboard for typing (e.g. an email address)."""
+    """A finger-friendly keyboard with Shift and a symbols layer."""
 
-    ROWS = [
+    LETTER_ROWS = [
         list("1234567890"),
         list("qwertyuiop"),
         list("asdfghjkl"),
         list("zxcvbnm"),
     ]
+    SYMBOL_ROWS = [
+        list("1234567890"),
+        list("!@#$%^&*()"),
+        list("-_=+[]{}"),
+        list(".,:;/?~"),
+    ]
 
-    def __init__(self, parent, prompt, on_submit, initial=""):
+    def __init__(self, parent, prompt, on_submit, initial="", submit_label="Done"):
         super().__init__(parent)
         self.on_submit = on_submit
+        self.shift = False
+        self.symbols = False
         self.configure(bg="#1e1e2e")
         self.transient(parent)
         self.grab_set()
         if getattr(parent, "kiosk", False) or getattr(getattr(parent, "master", None), "kiosk", False):
             self.attributes("-fullscreen", True)
         else:
-            self.geometry("820x520")
+            self.geometry("860x560")
 
         tk.Label(self, text=prompt, font=("Helvetica", 16, "bold"),
                  bg="#1e1e2e", fg="#cdd6f4").pack(pady=(16, 8))
@@ -729,24 +786,10 @@ class OnScreenKeyboard(tk.Toplevel):
                          relief=tk.FLAT, justify=tk.CENTER)
         entry.pack(fill=tk.X, padx=24, pady=(0, 12), ipady=8)
 
-        keys = tk.Frame(self, bg="#1e1e2e")
-        keys.pack(expand=True)
-        for row in self.ROWS:
-            rf = tk.Frame(keys, bg="#1e1e2e")
-            rf.pack(pady=3)
-            for ch in row:
-                self._key(rf, ch, lambda c=ch: self._append(c))
-
-        # Bottom row: special keys.
-        special = tk.Frame(keys, bg="#1e1e2e")
-        special.pack(pady=3)
-        self._key(special, "@", lambda: self._append("@"))
-        self._key(special, ".", lambda: self._append("."))
-        self._key(special, "_", lambda: self._append("_"))
-        self._key(special, "-", lambda: self._append("-"))
-        self._key(special, "⌫", self._backspace, width=4, bg="#f9e2af")
-        self._key(special, "@gmail.com", lambda: self._append("@gmail.com"),
-                  width=11, bg="#89b4fa")
+        self.keys = tk.Frame(self, bg="#1e1e2e")
+        self.keys.pack(expand=True)
+        self._letter_buttons = []
+        self._build_keys()
 
         # Action buttons.
         actions = tk.Frame(self, bg="#1e1e2e")
@@ -754,17 +797,55 @@ class OnScreenKeyboard(tk.Toplevel):
         tk.Button(actions, text="Cancel", command=self.destroy,
                   font=("Helvetica", 15, "bold"), bg="#45475a", fg="#cdd6f4",
                   relief=tk.FLAT, width=10, pady=12, cursor="hand2").pack(side=tk.LEFT, padx=10)
-        tk.Button(actions, text="Send ✉", command=self._submit,
+        tk.Button(actions, text=submit_label, command=self._submit,
                   font=("Helvetica", 15, "bold"), bg="#a6e3a1", fg="#1e1e2e",
                   relief=tk.FLAT, width=10, pady=12, cursor="hand2").pack(side=tk.LEFT, padx=10)
 
-    def _key(self, parent, label, cmd, width=3, bg="#313244"):
-        tk.Button(parent, text=label, command=cmd, font=("Helvetica", 15, "bold"),
-                  bg=bg, fg="#cdd6f4" if bg in ("#313244",) else "#1e1e2e",
-                  activebackground="#585b70", relief=tk.FLAT, width=width, pady=10,
-                  cursor="hand2").pack(side=tk.LEFT, padx=3)
+    def _build_keys(self):
+        for child in self.keys.winfo_children():
+            child.destroy()
+        self._letter_buttons = []
+        rows = self.SYMBOL_ROWS if self.symbols else self.LETTER_ROWS
+        for row in rows:
+            rf = tk.Frame(self.keys, bg="#1e1e2e")
+            rf.pack(pady=3)
+            for ch in row:
+                shown = ch.upper() if (self.shift and not self.symbols and ch.isalpha()) else ch
+                b = self._key(rf, shown, lambda c=ch: self._append_char(c))
+                if ch.isalpha():
+                    self._letter_buttons.append((b, ch))
 
-    def _append(self, ch):
+        # Bottom control row.
+        ctrl = tk.Frame(self.keys, bg="#1e1e2e")
+        ctrl.pack(pady=3)
+        self._key(ctrl, "⇧ Shift", self._toggle_shift, width=7,
+                  bg="#89b4fa" if self.shift else "#45475a")
+        self._key(ctrl, "?123" if not self.symbols else "ABC", self._toggle_symbols,
+                  width=5, bg="#45475a")
+        self._key(ctrl, "space", lambda: self._append_char(" "), width=12)
+        self._key(ctrl, "⌫", self._backspace, width=4, bg="#f9e2af")
+
+    def _key(self, parent, label, cmd, width=3, bg="#313244"):
+        b = tk.Button(parent, text=label, command=cmd, font=("Helvetica", 15, "bold"),
+                      bg=bg, fg="#cdd6f4" if bg in ("#313244", "#45475a") else "#1e1e2e",
+                      activebackground="#585b70", relief=tk.FLAT, width=width, pady=10,
+                      cursor="hand2")
+        b.pack(side=tk.LEFT, padx=3)
+        return b
+
+    def _toggle_shift(self):
+        self.shift = not self.shift
+        self._build_keys()
+
+    def _toggle_symbols(self):
+        self.symbols = not self.symbols
+        self._build_keys()
+
+    def _append_char(self, ch):
+        if self.shift and not self.symbols and ch.isalpha():
+            ch = ch.upper()
+            self.shift = False  # shift applies to one letter, like a phone
+            self._build_keys()
         self.var.set(self.var.get() + ch)
 
     def _backspace(self):
@@ -880,7 +961,8 @@ class SavedNotesWindow(tk.Toplevel):
     def _email(self, path):
         default = os.environ.get("DEFAULT_EMAIL", "")
         OnScreenKeyboard(self, "Type the email address to send to:",
-                         lambda addr: self._do_send(path, addr), initial=default)
+                         lambda addr: self._do_send(path, addr), initial=default,
+                         submit_label="Send ✉")
 
     def _do_send(self, path, addr):
         self.status.configure(text=f"Sending to {addr}...", fg="#f9e2af")
@@ -923,6 +1005,93 @@ class SavedNotesWindow(tk.Toplevel):
         tk.Button(row, text="Delete", command=do,
                   font=("Helvetica", 14, "bold"), bg="#f38ba8", fg="#1e1e2e",
                   relief=tk.FLAT, width=9, pady=12, cursor="hand2").pack(side=tk.LEFT, padx=10)
+
+
+class WifiWindow(tk.Toplevel):
+    """Scan for and connect to WiFi networks from the touchscreen."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.app = parent
+        self.title("WiFi")
+        self.configure(bg="#1e1e2e")
+        if getattr(parent, "kiosk", False):
+            self.attributes("-fullscreen", True)
+        else:
+            self.geometry("700x600")
+
+        top = tk.Frame(self, bg="#1e1e2e")
+        top.pack(fill=tk.X, pady=(10, 8), padx=12)
+        tk.Label(top, text="WiFi", font=("Helvetica", 18, "bold"),
+                 bg="#1e1e2e", fg="#cdd6f4").pack(side=tk.LEFT, padx=(4, 0))
+        tk.Button(top, text="✕", command=self.destroy, font=("Helvetica", 18, "bold"),
+                  bg="#f38ba8", fg="#1e1e2e", relief=tk.FLAT, width=3, pady=4,
+                  cursor="hand2").pack(side=tk.RIGHT)
+        tk.Button(top, text="⟳ Rescan", command=self.refresh, font=("Helvetica", 12, "bold"),
+                  bg="#89b4fa", fg="#1e1e2e", relief=tk.FLAT, pady=6, padx=12,
+                  cursor="hand2").pack(side=tk.RIGHT, padx=8)
+
+        self.status = tk.Label(self, text="", font=("Helvetica", 12),
+                               bg="#1e1e2e", fg="#94e2d5")
+        self.status.pack(pady=(0, 6))
+
+        self.list_frame = tk.Frame(self, bg="#181825")
+        self.list_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
+
+        self.refresh()
+
+    def refresh(self):
+        self.status.configure(text="Scanning for networks...", fg="#f9e2af")
+        for c in self.list_frame.winfo_children():
+            c.destroy()
+
+        def worker():
+            current = wifi_current()
+            nets = wifi_scan()
+            self.after(0, lambda: self._show(nets, current))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _show(self, nets, current):
+        if current:
+            self.status.configure(text=f"Connected to: {current}", fg="#a6e3a1")
+        else:
+            self.status.configure(text="Not connected", fg="#6c7086")
+        if not nets:
+            tk.Label(self.list_frame, text="No networks found. Tap Rescan.",
+                     font=("Helvetica", 13), bg="#181825", fg="#6c7086").pack(pady=30)
+            return
+        for ssid in nets:
+            is_cur = (ssid == current)
+            b = tk.Button(
+                self.list_frame,
+                text=("✓ " if is_cur else "") + ssid,
+                command=lambda s=ssid: self._pick(s),
+                font=("Helvetica", 14, "bold"),
+                bg="#a6e3a1" if is_cur else "#313244",
+                fg="#1e1e2e" if is_cur else "#cdd6f4",
+                relief=tk.FLAT, anchor="w", pady=12, padx=16, cursor="hand2",
+            )
+            b.pack(fill=tk.X, padx=8, pady=4)
+
+    def _pick(self, ssid):
+        OnScreenKeyboard(self, f"Password for '{ssid}':",
+                         lambda pw: self._connect(ssid, pw),
+                         submit_label="Connect")
+
+    def _connect(self, ssid, password):
+        self.status.configure(text=f"Connecting to {ssid}...", fg="#f9e2af")
+
+        def worker():
+            try:
+                wifi_connect(ssid, password)
+                self.after(0, lambda: (self.status.configure(
+                    text=f"✓ Connected to {ssid}", fg="#a6e3a1"), self.refresh()))
+            except Exception as e:
+                self.after(0, lambda: self.status.configure(
+                    text=f"✗ {e}", fg="#f38ba8"))
+
+        threading.Thread(target=worker, daemon=True).start()
 
 
 class App(tk.Tk):
@@ -1082,9 +1251,12 @@ class App(tk.Tk):
         )
         self.stop_btn.pack(side=tk.LEFT, padx=14)
 
-        # Open the saved-notes library.
+        # Bottom row: Saved Notes + WiFi.
+        bottom_row = tk.Frame(self, bg="#1e1e2e")
+        bottom_row.pack(pady=(20, 0))
+
         self.notes_btn = tk.Button(
-            self,
+            bottom_row,
             text="📁  Saved Notes",
             command=self._open_saved_notes,
             font=("Helvetica", 14, "bold"),
@@ -1096,7 +1268,22 @@ class App(tk.Tk):
             pady=10,
             cursor="hand2",
         )
-        self.notes_btn.pack(pady=(20, 0))
+        self.notes_btn.pack(side=tk.LEFT, padx=8)
+
+        self.wifi_btn = tk.Button(
+            bottom_row,
+            text="📶  WiFi",
+            command=self._open_wifi,
+            font=("Helvetica", 14, "bold"),
+            bg="#94e2d5",
+            fg="#1e1e2e",
+            activebackground="#7fd0c2",
+            relief=tk.FLAT,
+            padx=20,
+            pady=10,
+            cursor="hand2",
+        )
+        self.wifi_btn.pack(side=tk.LEFT, padx=8)
 
         self.progress = ttk.Progressbar(self, mode="indeterminate", length=400)
         self.progress.pack(pady=(30, 0))
@@ -1126,6 +1313,9 @@ class App(tk.Tk):
 
     def _open_saved_notes(self):
         SavedNotesWindow(self)
+
+    def _open_wifi(self):
+        WifiWindow(self)
 
     def _log(self, msg):
         self.log_area.configure(state=tk.NORMAL)
