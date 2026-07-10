@@ -511,30 +511,24 @@ Write the full color-coded study notes now:"""
     return "".join(notes_text)
 
 
-def _grab_input(win):
-    """Bring a pop-up to the front. Deliberately does NOT call grab_set(),
-    which can lock touch input on some Wayland/XWayland setups."""
-    def do():
-        try:
-            win.lift()
-        except Exception:
-            pass
-    win.after(50, do)
+class OverlayFrame(tk.Frame):
+    """A screen that fills the whole main window (instead of a separate pop-up
+    window). Because it's part of the main window, the touchscreen sends taps
+    to it reliably. Call .destroy() to close it and reveal what's underneath."""
+
+    def __init__(self, app):
+        super().__init__(app, bg="#1e1e2e")
+        self.app = app
+        self.place(relx=0, rely=0, relwidth=1, relheight=1)
+        self.tkraise()
 
 
-class NoteDisplayWindow(tk.Toplevel):
+class NoteDisplayWindow(OverlayFrame):
     def __init__(self, parent, allow_save=True):
         super().__init__(parent)
-        self.title("AI Generated Notes")
-        self.configure(bg="#1e1e2e")
         self.allow_save = allow_save   # False when viewing an already-saved note
         self._raw_text = ""            # original notes text, for saving
-        if getattr(parent, "kiosk", False):
-            self.attributes("-fullscreen", True)
-        else:
-            self.geometry("900x700")
         self._build_ui()
-        _grab_input(self)
 
     def _build_ui(self):
         # Top bar with title and an X button to go back to the main screen.
@@ -788,7 +782,7 @@ class NoteDisplayWindow(tk.Toplevel):
         self.clipboard_append(content)
 
 
-class OnScreenKeyboard(tk.Toplevel):
+class OnScreenKeyboard(OverlayFrame):
     """A finger-friendly keyboard with Shift and a symbols layer."""
 
     LETTER_ROWS = [
@@ -809,13 +803,6 @@ class OnScreenKeyboard(tk.Toplevel):
         self.on_submit = on_submit
         self.shift = False
         self.symbols = False
-        self.configure(bg="#1e1e2e")
-        self.transient(parent)
-        self.grab_set()
-        if getattr(parent, "kiosk", False) or getattr(getattr(parent, "master", None), "kiosk", False):
-            self.attributes("-fullscreen", True)
-        else:
-            self.geometry("860x560")
 
         tk.Label(self, text=prompt, font=("Helvetica", 16, "bold"),
                  bg="#1e1e2e", fg="#cdd6f4").pack(pady=(16, 8))
@@ -840,8 +827,6 @@ class OnScreenKeyboard(tk.Toplevel):
         tk.Button(actions, text=submit_label, command=self._submit,
                   font=("Helvetica", 15, "bold"), bg="#a6e3a1", fg="#1e1e2e",
                   relief=tk.FLAT, width=10, pady=12, cursor="hand2").pack(side=tk.LEFT, padx=10)
-
-        _grab_input(self)
 
     def _build_keys(self):
         for child in self.keys.winfo_children():
@@ -901,18 +886,11 @@ class OnScreenKeyboard(tk.Toplevel):
             cb(value)
 
 
-class SavedNotesWindow(tk.Toplevel):
+class SavedNotesWindow(OverlayFrame):
     """Browse saved notes: open, email, or delete each one."""
 
     def __init__(self, parent):
         super().__init__(parent)
-        self.app = parent
-        self.title("Saved Notes")
-        self.configure(bg="#1e1e2e")
-        if getattr(parent, "kiosk", False):
-            self.attributes("-fullscreen", True)
-        else:
-            self.geometry("900x700")
 
         # Top bar.
         top = tk.Frame(self, bg="#1e1e2e")
@@ -947,7 +925,6 @@ class SavedNotesWindow(tk.Toplevel):
             w.bind("<Button-5>", lambda e: self.canvas.yview_scroll(3, "units"))
 
         self.refresh()
-        _grab_input(self)
 
     def _drag_start(self, e):
         self._drag_y = e.y_root
@@ -1022,17 +999,10 @@ class SavedNotesWindow(tk.Toplevel):
         threading.Thread(target=worker, daemon=True).start()
 
     def _delete(self, path):
-        # Simple tap-to-confirm dialog.
-        dlg = tk.Toplevel(self)
-        dlg.configure(bg="#1e1e2e")
-        dlg.transient(self)
-        dlg.grab_set()
-        if getattr(self.app, "kiosk", False):
-            dlg.attributes("-fullscreen", True)
-        else:
-            dlg.geometry("420x200")
+        # Full-window tap-to-confirm overlay.
+        dlg = OverlayFrame(self)
         tk.Label(dlg, text="Delete this note?", font=("Helvetica", 18, "bold"),
-                 bg="#1e1e2e", fg="#cdd6f4").pack(pady=(50, 24))
+                 bg="#1e1e2e", fg="#cdd6f4").pack(pady=(80, 24))
         row = tk.Frame(dlg, bg="#1e1e2e")
         row.pack()
         tk.Button(row, text="Cancel", command=dlg.destroy,
@@ -1050,18 +1020,11 @@ class SavedNotesWindow(tk.Toplevel):
                   relief=tk.FLAT, width=9, pady=12, cursor="hand2").pack(side=tk.LEFT, padx=10)
 
 
-class WifiWindow(tk.Toplevel):
+class WifiWindow(OverlayFrame):
     """Scan for and connect to WiFi networks from the touchscreen."""
 
     def __init__(self, parent):
         super().__init__(parent)
-        self.app = parent
-        self.title("WiFi")
-        self.configure(bg="#1e1e2e")
-        if getattr(parent, "kiosk", False):
-            self.attributes("-fullscreen", True)
-        else:
-            self.geometry("700x600")
 
         top = tk.Frame(self, bg="#1e1e2e")
         top.pack(fill=tk.X, pady=(10, 8), padx=12)
@@ -1082,7 +1045,6 @@ class WifiWindow(tk.Toplevel):
         self.list_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
 
         self.refresh()
-        _grab_input(self)
 
     def refresh(self):
         self.status.configure(text="Scanning for networks...", fg="#f9e2af")
