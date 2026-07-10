@@ -294,28 +294,44 @@ def generate_notes(transcript, status_callback):
         )
     client = anthropic.Anthropic(api_key=api_key)
 
-    prompt = f"""You are an expert note-taker. Below is a transcript from a lecture or speech.
-Create beautiful, organized notes from this content. Your notes should:
+    today = datetime.datetime.now().strftime("%B %d, %Y")
+    prompt = f"""You are an expert study-note creator. Turn the lecture/speech transcript
+below into the best possible study notes — rich, organized, and easy to review.
 
-1. Start with a bold title/topic header
-2. List the KEY CONCEPTS with clear explanations
-3. Include IMPORTANT DETAILS and supporting points
-4. Highlight any notable quotes (use quotation marks)
-5. End with a SUMMARY section (3-5 bullet points of the most critical takeaways)
+Include whichever of these are relevant to the content (not all apply every time),
+and go beyond plain bullet points — use real structure:
+- Title: the topic and the date ({today})
+- Main headings that break the topic into clear sections
+- Key concepts: the most important ideas, clearly explained
+- Important vocabulary: define the terms worth knowing
+- Examples: short examples that make hard ideas concrete
+- Formulas or equations: with what each variable means (if any)
+- Cause/effect & relationships: show how ideas connect (use arrows -> when useful)
+- Questions: things that are unclear or likely test questions
+- Summary: 2-5 sentences explaining the topic in plain language
+- Key takeaways: a few bullets of the most important facts
+- Mnemonics or memory tricks: acronyms/tips to remember things (if helpful)
 
-Use clear visual structure with headers (===), subheaders (---), bullet points (•), and
-numbered lists where appropriate. Make it easy to scan and review.
+FORMAT RULES — follow these EXACTLY so the notes display with color coding:
+- Title line: start with "# "
+- Section headings: start with "## "
+- Definitions/vocabulary: start the line with "Definition: " (term — meaning)
+- Examples: start the line with "Example: "
+- Important facts, formulas, equations: start the line with "Important: " or "Formula: "
+- Likely test questions / unclear points: start the line with "Q: "
+- Normal points: start with "- " for bullets
+- Use short lines. Do NOT use markdown tables. Use "->" for arrows/relationships.
 
 TRANSCRIPT:
 {transcript}
 
-Generate comprehensive, well-structured notes:"""
+Write the full color-coded study notes now:"""
 
     notes_text = []
 
     with client.messages.stream(
         model=CLAUDE_MODEL,
-        max_tokens=2048,
+        max_tokens=3072,
         messages=[{"role": "user", "content": prompt}],
     ) as stream:
         for text in stream.text_stream:
@@ -425,10 +441,15 @@ class NoteDisplayWindow(tk.Toplevel):
         close_btn.pack(side=tk.LEFT, padx=8)
 
     def _configure_tags(self):
-        self.text_area.tag_configure("header", font=("Courier New", 14, "bold"), foreground="#89b4fa")
-        self.text_area.tag_configure("subheader", font=("Courier New", 12, "bold"), foreground="#94e2d5")
-        self.text_area.tag_configure("bullet", foreground="#a6e3a1")
-        self.text_area.tag_configure("quote", foreground="#f9e2af", font=("Courier New", 12, "italic"))
+        # Color coding: blue=headings, red=important/formulas, green=examples,
+        # yellow=definitions/vocab, plus supporting styles.
+        self.text_area.tag_configure("title", font=("Helvetica", 18, "bold"), foreground="#89b4fa", spacing3=6)
+        self.text_area.tag_configure("heading", font=("Helvetica", 14, "bold"), foreground="#89b4fa", spacing1=8, spacing3=4)
+        self.text_area.tag_configure("important", font=("Courier New", 12, "bold"), foreground="#f38ba8")
+        self.text_area.tag_configure("example", foreground="#a6e3a1", font=("Courier New", 12, "italic"))
+        self.text_area.tag_configure("definition", foreground="#f9e2af")
+        self.text_area.tag_configure("question", foreground="#cba6f7")
+        self.text_area.tag_configure("bullet", foreground="#cdd6f4")
         self.text_area.tag_configure("normal", foreground="#cdd6f4")
 
     def append_text(self, text):
@@ -444,18 +465,32 @@ class NoteDisplayWindow(tk.Toplevel):
         self.text_area.configure(state=tk.DISABLED)
 
     def _render_formatted(self, text):
-        for line in text.split("\n"):
+        def clean(s):
+            # Strip markdown emphasis markers so they don't show as literal *.
+            return s.replace("**", "").replace("__", "")
+
+        for raw in text.split("\n"):
+            line = clean(raw)
             stripped = line.strip()
-            if stripped.startswith("===") or stripped.endswith("==="):
-                self.text_area.insert(tk.END, line + "\n", "header")
-            elif stripped.startswith("---") or stripped.endswith("---"):
-                self.text_area.insert(tk.END, line + "\n", "subheader")
-            elif stripped.startswith("•") or stripped.startswith("-") or stripped.startswith("*"):
-                self.text_area.insert(tk.END, line + "\n", "bullet")
-            elif '"' in stripped and stripped.count('"') >= 2:
-                self.text_area.insert(tk.END, line + "\n", "quote")
-            elif stripped.startswith("#"):
-                self.text_area.insert(tk.END, line.lstrip("#").strip() + "\n", "header")
+            low = stripped.lower()
+
+            if stripped.startswith("# "):
+                self.text_area.insert(tk.END, stripped[2:].strip() + "\n", "title")
+            elif stripped.startswith("## ") or stripped.startswith("### "):
+                self.text_area.insert(tk.END, stripped.lstrip("# ").strip() + "\n", "heading")
+            elif low.startswith(("important:", "formula:", "equation:", "key fact:")):
+                self.text_area.insert(tk.END, stripped + "\n", "important")
+            elif low.startswith(("example:", "ex:", "e.g.")):
+                self.text_area.insert(tk.END, stripped + "\n", "example")
+            elif low.startswith(("definition:", "def:", "vocab:", "term:")):
+                self.text_area.insert(tk.END, stripped + "\n", "definition")
+            elif low.startswith(("q:", "question:", "?:")):
+                self.text_area.insert(tk.END, stripped + "\n", "question")
+            elif stripped.startswith(("•", "-", "*", "→")) or (len(stripped) > 2 and stripped[0].isdigit() and stripped[1] in ".)"):
+                # Bullet/numbered: color a definition-style "term — meaning" yellow.
+                tag = "definition" if (" — " in stripped or " – " in stripped) else "bullet"
+                bullet = stripped if stripped.startswith(("•", "→")) else ("• " + stripped.lstrip("-*").strip())
+                self.text_area.insert(tk.END, bullet + "\n", tag)
             else:
                 self.text_area.insert(tk.END, line + "\n", "normal")
 
