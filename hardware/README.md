@@ -26,13 +26,14 @@ A parametric enclosure for the **Raspberry Pi 5 + 5" HDMI display + ReSpeaker**.
 - **Bezel:** print face-down; the screw/retaining posts may want light supports
 
 ## Assembly
-1. Screw the Pi 5 onto the four standoffs in the back shell (M2.5 screws).
-2. Seat the ReSpeaker into the round recess behind the top grille.
-3. Drop the 5" display into the bezel's inner ledge (glass facing out).
-4. Connect HDMI + USB between the display and the Pi, and the ReSpeaker USB.
-5. Close the bezel onto the back shell. Add M3 screws or a bead of hot glue at
-   the corners to hold it shut (add corner screw holes in the SCAD if you want
-   a fully screwed case).
+1. **Screw the 5" display onto the front** — line its mounting holes up with
+   the four posts behind the screen opening and drive in short screws.
+2. **Screw the Pi 5** onto the four standoffs inside the box (M2.5).
+3. **Rest the ReSpeaker in the round recess on the top surface**; route its USB
+   cable down through the cable hole into the box and into a Pi USB port.
+4. Connect HDMI + USB between the display and the Pi.
+5. (Optional) Screw the `backcover` panel onto the open back, or leave it open
+   for airflow and easy access.
 
 ## Important
 This is a **starting-point design** — the port cutouts and sizes almost
