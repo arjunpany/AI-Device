@@ -57,6 +57,9 @@ extra_hole_h   = 0.75*in;       // 19.05 tall
 extra_hole_len = 1.0*in;        // 25.4  long (across, along X)
 extra_hole_x = W/2 - 16;        // toward the right
 extra_hole_z = inner_h - 10;    // near the top
+// Second hole on the RIGHT (+X) wall (same 3/4" x 1"), mid-height, front-ish.
+extra2_y = -20;                 // along the length (toward the front)
+extra2_z = inner_h/2;           // mid-height
 // Front (bottom) opening: one hole 2.1" wide x 3/4" tall.
 front_hole_w = 2.1*in;   // 53.3
 front_hole_h = 0.75*in;  // 19.05
@@ -91,6 +94,9 @@ module base_tray(){
             // 3/4" tall x 1" long hole on the FRONT wall, top-right.
             translate([extra_hole_x, -D/2, extra_hole_z])
                 cube([extra_hole_len, wall*3, extra_hole_h], center=true);
+            // Second hole on the RIGHT (+X) wall.
+            translate([W/2, extra2_y, extra2_z])
+                cube([wall*3, extra_hole_len, extra_hole_h], center=true);
         }
         translate([pi_cx, pi_cy, wall])
             for(sx=[-1,1],sy=[-1,1])
