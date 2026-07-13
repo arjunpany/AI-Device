@@ -53,7 +53,7 @@ front_hole_w = 2.1*in;   // 53.3
 front_hole_h = 0.75*in;  // 19.05
 // Left (side) opening: one slot spanning between the two Pi holes.
 left_slot_h = 16;
-left_slot_endgap = 6;    // stop just short of each mounting hole
+left_slot_endgap = 3;    // reach right up to each mounting hole (standoff edge)
 
 // --- helpers --------------------------------------------------------------
 module boxZ(w,d,h,r){ linear_extrude(h) offset(r=r) offset(delta=-r)
