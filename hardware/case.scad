@@ -115,9 +115,6 @@ module top_lid(){
         // Speaker dish (flat) + cable hole + grille at the back.
         translate([0, mic_cy, wall-mic_recess_d]) cylinder(h=mic_recess_d+1, d=mic_dia+tol);
         translate([0, mic_cy, -1]) cylinder(h=wall+2, d=mic_cable_d);
-        for(ring=[1:4]) for(a=[0:360/(ring*6):359])
-            rotate([0,0,a]) translate([0,mic_cy,-1])
-                translate([ring*(mic_dia/2/5),0,0]) cylinder(h=wall+2, d=3);
         // ReSpeaker screw pilot holes at the 3 given coordinates.
         for(s = mic_screws)
             translate([s[0]*in, mic_cy + s[1]*in, -8]) cylinder(h=wall+10, d=mic_screw_d);
