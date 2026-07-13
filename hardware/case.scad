@@ -1,8 +1,9 @@
 // ============================================================================
 //  AI Lecture Note-Taker — 8 x 4 x 2 in desk box, display on mounting rails
 //    * Outer body: 8" long (D) x 4" wide (W) x 2" tall (H)
-//    * The 5" display is WIDER than the 4" body, so it sits ON TOP on two
-//      RAILS spaced 3.75" apart, overhanging the sides, screwed down.
+//    * The 5" display is WIDER than the 4" body, so it sits ON TOP overhanging
+//      the sides and screws into 4 corner EARS (holes 4 7/16" x 65 mm apart).
+//      No bars and no middle hole, so the HDMI/USB connectors have room.
 //    * Screen stays landscape (normal orientation).
 //    * ReSpeaker flat on the top at the back.
 //    * Pi inside; USB/Ethernet out the FRONT, power/HDMI out the LEFT.
@@ -19,12 +20,12 @@ W = 4*in;  D = 8*in;  H = 2*in;              // 101.6 x 203.2 x 50.8
 wall = 3; tol = 0.4; margin = 6; edge_r = 8;
 inner_h = H - 2*wall;
 
-// --- display (landscape, overhangs the width; sits on rails) --------------
+// --- display (landscape, overhangs the width; screws to 4 corner ears) ----
 disp_x = 120.7; disp_y = 74.7;               // board size
-rail_gap   = 3.75*in;                        // 95.25  spacing between the rails
-rail_hole_y = 65;                            // front-back screw-hole spacing (VERIFY)
+hole_dx = 4.4375*in;                         // 112.7  side-to-side screw spacing (4 7/16")
+hole_dy = 65;                                // front-back screw spacing (VERIFY)
 disp_screw_d = 2.8;
-rail_w = 12; rail_h = 6; rail_len = rail_hole_y + 18;
+ear_h = 5;                                   // small standoff under the display corners
 
 // --- ReSpeaker ------------------------------------------------------------
 mic_dia = 70; mic_recess_d = 3; mic_cable_d = 12;
@@ -71,7 +72,7 @@ module base_tray(){
     }
 }
 
-// --- top lid with the two display rails -----------------------------------
+// --- top lid: 4 corner mounting ears for the display (no bars, no big hole) -
 module top_lid(){
     difference(){
         union(){
@@ -79,17 +80,18 @@ module top_lid(){
             translate([0,0,-6]) difference(){                  // rim into base
                 boxZ(W-2*wall-tol, D-2*wall-tol, 6, edge_r-wall);
                 translate([0,0,-1]) boxZ(W-2*wall-tol-4, D-2*wall-tol-4, 8, edge_r-wall); }
-            // TWO mounting rails, 3.75" apart, running front-to-back.
-            for(sx=[-1,1])
-                translate([sx*rail_gap/2, disp_cy, wall])
-                    linear_extrude(rail_h) square([rail_w, rail_len], center=true);
+            // Four mounting ears at the display's screw holes (112.7 x 65 mm).
+            // The side holes sit just outside the 4" body, so each ear is a
+            // small bracket reaching out from the top edge to a screw boss.
+            for(sx=[-1,1], sy=[-1,1]){
+                ex = sx*hole_dx/2;  ey = disp_cy + sy*hole_dy/2;
+                hull(){
+                    translate([sx*(W/2-8), ey, wall/2]) cube([2,16,wall], center=true);
+                    translate([ex, ey, wall/2]) cube([12,16,wall], center=true);
+                }
+                translate([ex, ey, wall]) post(ear_h, 9, disp_screw_d);
+            }
         }
-        // Opening under the display for its rear connectors.
-        translate([0, disp_cy, -1]) boxZ(rail_gap-rail_w-4, rail_hole_y+6, wall+2, 3);
-        // Screw pilot holes down through the rails (4 display corners).
-        for(sx=[-1,1],sy=[-1,1])
-            translate([sx*rail_gap/2, disp_cy + sy*rail_hole_y/2, -1])
-                cylinder(h = wall+rail_h+2, d = disp_screw_d);
         // Speaker dish (flat) + cable hole + grille at the back.
         translate([0, mic_cy, wall-mic_recess_d]) cylinder(h=mic_recess_d+1, d=mic_dia+tol);
         translate([0, mic_cy, -1]) cylinder(h=wall+2, d=mic_cable_d);
