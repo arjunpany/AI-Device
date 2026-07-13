@@ -28,7 +28,7 @@ disp_screw_d = 2.8;
 ear_h = 5;                                   // small standoff under the display corners
 
 // --- ReSpeaker ------------------------------------------------------------
-mic_dia = 70; mic_recess_d = 3; mic_cable_d = 12;
+mic_dia = 70; mic_recess_d = 0.0625*in; mic_cable_d = 12;  // recess = 1/16"
 
 // --- Pi 4 (rotated: USB/LAN faces FRONT, power/HDMI faces LEFT) ------------
 pi_w = 88.9; pi_h = 57.2; pi_hole_dx = 58; pi_hole_dy = 49;
