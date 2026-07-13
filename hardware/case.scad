@@ -105,8 +105,8 @@ module base_tray(){
         translate([pi_cx, pi_cy, wall])
             for(sx=[-1,1],sy=[-1,1])
                 translate([sx*hole_x/2, sy*hole_y/2, 0]) post(pi_standoff_h,6,pi_screw_d);
-        // Corner screw posts: the lid bolts down into these.
-        for(sx=[-1,1],sy=[-1,1])
+        // Corner screw posts (back two only; front ones removed to clear the Pi).
+        for(sx=[-1,1],sy=[1])
             translate([sx*(W/2-lid_screw_inset), sy*(D/2-lid_screw_inset), wall])
                 post(inner_h, 8, lid_screw_d);
     }
@@ -144,8 +144,8 @@ module top_lid(){
             translate([-s[0]*in, mic_cy - s[1]*in, -8]) cylinder(h=wall+10, d=mic_screw_d);
         // Cable slot between display and speaker.
         translate([0, slot_cy, -1]) boxZ(30, 9, wall+2, 4);
-        // Corner clearance holes so screws pass through the lid into the base.
-        for(sx=[-1,1],sy=[-1,1])
+        // Corner clearance holes (back two only) matching the base posts.
+        for(sx=[-1,1],sy=[1])
             translate([sx*(W/2-lid_screw_inset), sy*(D/2-lid_screw_inset), -1])
                 cylinder(h=wall+2, d=3.4);
     }
