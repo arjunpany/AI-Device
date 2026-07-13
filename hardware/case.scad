@@ -11,7 +11,7 @@
 // ============================================================================
 
 PART = "both";            // "base", "lid", or "both"
-PI_MODEL = "pi4";         // "pi4" or "pi5" — sets the port cutout positions
+PI_MODEL = "pi4";         // matches the Pi 4 in the photo
 $fn = 64;
 
 // ---------------------------------------------------------------------------
@@ -29,7 +29,7 @@ disp_hole_dy  = 68;
 disp_screw_d  = 2.8;
 
 // ---- ReSpeaker (in the LID, facing up) ----
-mic_dia       = 70;
+mic_dia       = 65;       // round ReSpeaker, measured off the photo (~63-66 mm)
 mic_recess_d  = 3;
 mic_cable_d   = 12;       // hole directly under the mic
 
