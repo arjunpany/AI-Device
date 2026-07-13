@@ -125,15 +125,16 @@ module top_lid(){
                 translate([ex, ey, wall]) post(ear_h, 9, disp_screw_d);
             }
             // ReSpeaker mounting bosses (3 holes) hanging below the lid.
+            // Hole pattern rotated 180 deg about the speaker center.
             for(s = mic_screws)
-                translate([s[0]*in, mic_cy + s[1]*in, -6]) cylinder(h=6+wall, d=6);
+                translate([-s[0]*in, mic_cy - s[1]*in, -6]) cylinder(h=6+wall, d=6);
         }
         // Speaker dish (flat) + cable hole + grille at the back.
         translate([0, mic_cy, wall-mic_recess_d]) cylinder(h=mic_recess_d+1, d=mic_dia+tol);
         translate([0, mic_cy, -1]) cylinder(h=wall+2, d=mic_cable_d);
-        // ReSpeaker screw pilot holes at the 3 given coordinates.
+        // ReSpeaker screw pilot holes at the 3 coordinates (rotated 180 deg).
         for(s = mic_screws)
-            translate([s[0]*in, mic_cy + s[1]*in, -8]) cylinder(h=wall+10, d=mic_screw_d);
+            translate([-s[0]*in, mic_cy - s[1]*in, -8]) cylinder(h=wall+10, d=mic_screw_d);
         // Cable slot between display and speaker.
         translate([0, slot_cy, -1]) boxZ(30, 9, wall+2, 4);
     }
