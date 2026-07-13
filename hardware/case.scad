@@ -52,7 +52,7 @@ port_z = wall + pi_standoff_h + 6;
 front_hole_w = 2.1*in;   // 53.3
 front_hole_h = 0.75*in;  // 19.05
 // Left (side) opening: one slot spanning between the two Pi holes.
-left_slot_h = 16;
+left_slot_h = 0.5*in;    // 12.7  slot height
 left_slot_endgap = 3;    // reach right up to each mounting hole (standoff edge)
 
 // --- helpers --------------------------------------------------------------
