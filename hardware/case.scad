@@ -51,6 +51,10 @@ pi_cx = -W/2 + wall + span_x/2 + 2;
 pi_cy = -D/2 + wall + margin + span_y/2;
 
 port_z = wall + pi_standoff_h + 6;
+// Extra round hole on the RIGHT (+X) wall (the one you marked, 3/4").
+extra_hole_d = 0.75*in;         // 19.05 diameter
+extra_hole_y = D/4;             // position along the length (toward the back)
+extra_hole_z = inner_h - 10;    // height up the wall (near the top)
 // Front (bottom) opening: one hole 2.1" wide x 3/4" tall.
 front_hole_w = 2.1*in;   // 53.3
 front_hole_h = 0.75*in;  // 19.05
@@ -82,6 +86,9 @@ module base_tray(){
             boxZ(W, D, inner_h+wall, edge_r);
             translate([0,0,wall]) boxZ(W-2*wall, D-2*wall, inner_h+1, edge_r-wall);
             cut_front(); cut_left();
+            // 3/4" hole on the right wall.
+            translate([W/2, extra_hole_y, extra_hole_z]) rotate([0,90,0])
+                cylinder(h=wall*3, d=extra_hole_d, center=true);
         }
         translate([pi_cx, pi_cy, wall])
             for(sx=[-1,1],sy=[-1,1])
