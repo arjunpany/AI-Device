@@ -33,7 +33,9 @@ mic_dia = 70; mic_recess_d = 3; mic_cable_d = 12;
 // --- Pi 4 (rotated: USB/LAN faces FRONT, power/HDMI faces LEFT) ------------
 pi_w = 88.9; pi_h = 57.2; pi_hole_dx = 58; pi_hole_dy = 49;
 pi_standoff_h = 4; pi_screw_d = 2.5;
-span_x = pi_h; span_y = pi_w; hole_x = pi_hole_dy; hole_y = pi_hole_dx;
+span_x = pi_h; span_y = pi_w;
+hole_x = 1.9375*in;   // 49.2  Pi hole spacing across the width (1 15/16")
+hole_y = 2.3125*in;   // 58.7  Pi hole spacing top-to-bottom (2 5/16")
 
 // --- placement ------------------------------------------------------------
 // placed so both front/back ears stay inside the front wall
