@@ -151,6 +151,8 @@ module top_lid(){
     }
 }
 
+// Shown in black (the real color comes from printing in BLACK filament).
+color("black")
 if(PART=="base") base_tray();
 else if(PART=="lid") top_lid();
 else { base_tray(); translate([W+30,0,0]) top_lid(); }
