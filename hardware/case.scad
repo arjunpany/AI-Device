@@ -39,8 +39,11 @@ span_x = pi_h; span_y = pi_w; hole_x = pi_hole_dy; hole_y = pi_hole_dx;
 // placed so both front/back ears stay inside the front wall
 disp_cy = -D/2 + margin + hole_dy/2;         // display toward the front
 mic_cy  =  D/2 - margin - mic_dia/2;          // speaker at the back
-slot_cy = disp_cy + disp_y/2 + 8;
-pi_cx = 0; pi_cy = -D/2 + wall + margin + span_y/2;
+// cable slot moved back to just in front of the speaker (clear of the display)
+slot_cy = mic_cy - mic_dia/2 - 8;
+// Pi pushed all the way to the LEFT wall
+pi_cx = -W/2 + wall + span_x/2 + 2;
+pi_cy = -D/2 + wall + margin + span_y/2;
 
 flip_front = false; flip_left = false;
 port_z = wall + pi_standoff_h + 6;
