@@ -18,25 +18,25 @@ $fn = 64;
 //  USER DIMENSIONS — measure your hardware and edit these
 // ---------------------------------------------------------------------------
 
-// ---- 5" display (in the LID, facing up) ----
-disp_w        = 121;
-disp_h        = 78;
+// ---- 5" display (in the LID, facing up) ----  measured 4.75 x 2.94 in
+disp_w        = 120.7;    // 4.75 in
+disp_h        = 74.7;     // 2.94 in
 disp_thick    = 5;
-screen_w      = 110;
-screen_h      = 62;
-disp_hole_dx  = 111;      // display screw-hole spacing X (0 = no posts)
-disp_hole_dy  = 68;
+screen_w      = 109;      // visible screen (tweak to your bezel)
+screen_h      = 61;
+disp_hole_dx  = 111;      // display screw-hole spacing X (0 = no posts) — VERIFY
+disp_hole_dy  = 65;
 disp_screw_d  = 2.8;
 
 // ---- ReSpeaker (in the LID, facing up) ----
-mic_dia       = 65;       // round ReSpeaker, measured off the photo (~63-66 mm)
+mic_dia       = 70;       // measured 7 cm diameter
 mic_recess_d  = 3;
 mic_cable_d   = 12;       // hole directly under the mic
 
-// ---- Raspberry Pi (on the BASE floor, centered) ----
-pi_w          = 85;       // long side (X)
-pi_h          = 56;       // short side (Y)
-pi_hole_dx    = 58;
+// ---- Raspberry Pi (on the BASE floor) ----  measured 3.5 x 2.25 in
+pi_w          = 88.9;     // 3.5 in  (long side, X)
+pi_h          = 57.2;     // 2.25 in (short side, Y)
+pi_hole_dx    = 58;       // standard Pi mounting-hole spacing
 pi_hole_dy    = 49;
 pi_standoff_h = 3;        // low, to keep it thin/handheld
 pi_screw_d    = 2.5;
@@ -79,20 +79,15 @@ pi_cx = 0;
 pi_cy = mic_cy;
 
 // ---------------------------------------------------------------------------
-//  PORT POSITIONS  (center offset along the board edge, from the board's
-//  front-left corner; width along the wall; height in Z).  Pi is centered,
-//  long side along X.  Verify against your board and tweak.
+//  PORTS — two big openings so EVERY Pi port is reachable (no fiddly per-port
+//  alignment). Orient the Pi so its two port edges face the back (+Y) and
+//  right (+X) walls; the wide slots expose the whole port row.
 // ---------------------------------------------------------------------------
-//   BACK edge (+Y wall):   USB-C power, micro-HDMI0, micro-HDMI1, 3.5mm jack
-//   RIGHT edge (+X wall):  Ethernet + USB-A block
-front_ports = (PI_MODEL == "pi5")
-    ? [[ 11.2, 11, 8, "USB-C"],  [26.0, 8, 7, "HDMI0"], [39.0, 8, 7, "HDMI1"]]      // Pi 5 (no audio jack)
-    : [[  7.7, 11, 8, "USB-C"],  [26.0, 8, 7, "HDMI0"], [39.5, 8, 7, "HDMI1"], [54.0, 8, 8, "AV"]]; // Pi 4
-right_ports = (PI_MODEL == "pi5")
-    ? [[ 9.0, 17, 15, "LAN"], [27.0, 16, 17, "USB3"], [45.0, 16, 17, "USB2"]]        // Pi 5
-    : [[10.25, 17, 15, "LAN"], [29.0, 16, 17, "USB3"], [47.0, 16, 17, "USB2"]];      // Pi 4
-
-port_z = wall + pi_standoff_h + 4;   // height of port centers off the floor
+port_z    = wall + pi_standoff_h + 5;   // vertical center of the openings
+back_slot_w  = pi_w * 0.85;             // spans the power/HDMI/audio row
+back_slot_h  = 15;
+right_slot_w = pi_h * 0.80;             // spans the USB/Ethernet row
+right_slot_h = 20;
 
 // ---------------------------------------------------------------------------
 //  HELPERS
@@ -104,16 +99,6 @@ module rrect(w, h, d, r) {
 module post(h, od, hole_d) {
     difference() { cylinder(h = h, d = od);
         translate([0, 0, 1.5]) cylinder(h = h, d = hole_d); }
-}
-// Pi's port edges face the BACK (+Y) wall and the RIGHT (+X) wall, and the Pi
-// is centered at (pi_cx, pi_cy).  Offsets are measured along the board edge.
-module cut_back(o, w, h) {   // +Y wall: USB-C / HDMI / audio
-    translate([pi_cx - pi_w/2 + o, outer_d/2 - wall/2, port_z])
-        cube([w, wall*2 + 2, h], center = true);
-}
-module cut_right(o, w, h) {  // +X wall: LAN / USB
-    translate([outer_w/2 - wall/2, pi_cy - pi_h/2 + o, port_z])
-        cube([wall*2 + 2, w, h], center = true);
 }
 
 // ---------------------------------------------------------------------------
@@ -139,13 +124,12 @@ module base_tray() {
                 translate([0,0,-1]) rrect(inner_w, inner_d, inner_h - 2, grip_r - wall);
             }
         }
-        // Port cutouts placed at the real Pi ports.
-        for (p = front_ports) cut_back(p[0], p[1], p[2]);
-        for (p = right_ports) cut_right(p[0], p[1], p[2]);
-        // A couple of grommet holes on the LEFT wall for external cables.
-        for (i = [-1, 1])
-            translate([-outer_w/2 - 1, i*22, port_z])
-                rotate([0, 90, 0]) cylinder(h = wall + 4, d = 11);
+        // Big port opening on the BACK (+Y) wall — power / HDMI / audio row.
+        translate([pi_cx, outer_d/2 - wall/2, port_z])
+            cube([back_slot_w, wall*2 + 2, back_slot_h], center = true);
+        // Big port opening on the RIGHT (+X) wall — USB / Ethernet row.
+        translate([outer_w/2 - wall/2, pi_cy, port_z])
+            cube([wall*2 + 2, right_slot_w, right_slot_h], center = true);
     }
 }
 
