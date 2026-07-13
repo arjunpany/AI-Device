@@ -47,22 +47,30 @@ slot_cy = mic_cy - mic_dia/2 - 8;
 pi_cx = -W/2 + wall + span_x/2 + 2;
 pi_cy = -D/2 + wall + margin + span_y/2;
 
-flip_front = false; flip_left = false;
 port_z = wall + pi_standoff_h + 6;
-front_ports = [ [10.5,17,15],[29.0,16,18],[47.0,16,18] ];        // LAN,USB,USB
-left_ports  = [ [ 7.7,12,8],[26.0,9,8],[39.5,9,8],[54.0,9,9] ];  // USBC,HDMI,HDMI,AV
+// Front (bottom) opening: one hole 2.1" wide x 3/4" tall.
+front_hole_w = 2.1*in;   // 53.3
+front_hole_h = 0.75*in;  // 19.05
+// Left (side) opening: one slot spanning between the two Pi holes.
+left_slot_h = 16;
+left_slot_endgap = 6;    // stop just short of each mounting hole
 
 // --- helpers --------------------------------------------------------------
 module boxZ(w,d,h,r){ linear_extrude(h) offset(r=r) offset(delta=-r)
     square([w,d],center=true); }
 module post(h,od,hd){ difference(){ cylinder(h=h,d=od);
     translate([0,0,1.5]) cylinder(h=h,d=hd);} }
-module cut_front(){ for(p=front_ports){
-    x = flip_front ? pi_cx+span_x/2-p[0] : pi_cx-span_x/2+p[0];
-    translate([x, -D/2 + wall/2, port_z]) cube([p[1], wall*3, p[2]], center=true); } }
-module cut_left(){ for(p=left_ports){
-    y = flip_left ? pi_cy+span_y/2-p[0] : pi_cy-span_y/2+p[0];
-    translate([-W/2 + wall/2, y, port_z]) cube([wall*3, p[1], p[2]], center=true); } }
+// Front (bottom) wall: one rectangular opening, centered on the Pi.
+module cut_front(){
+    translate([pi_cx, -D/2 + wall/2, port_z])
+        cube([front_hole_w, wall*3, front_hole_h], center=true);
+}
+// Left wall: one slot spanning between the two Pi mounting holes (in Y).
+module cut_left(){
+    len = hole_y - 2*left_slot_endgap;
+    translate([-W/2 + wall/2, pi_cy, port_z])
+        cube([wall*3, len, left_slot_h], center=true);
+}
 
 // --- base tray ------------------------------------------------------------
 module base_tray(){
