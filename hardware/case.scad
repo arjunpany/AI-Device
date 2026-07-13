@@ -28,7 +28,10 @@ disp_screw_d = 2.8;
 ear_h = 5;                                   // small standoff under the display corners
 
 // --- ReSpeaker ------------------------------------------------------------
-mic_dia = 70; mic_recess_d = 0.0625*in; mic_cable_d = 12;  // recess = 1/16"
+mic_dia = 2.75*in; mic_recess_d = 0.0625*in; mic_cable_d = 12;  // 2 3/4" dia, 1/16" recess
+mic_screw_d = 2.4;                            // pilot for the ReSpeaker screws
+// ReSpeaker screw holes, relative to the speaker center (inches).
+mic_screws = [ [-0.78125, 0.4375], [0.78125, 0.4375], [-0.34375, -1.0625] ];
 
 // --- Pi 4 (rotated: USB/LAN faces FRONT, power/HDMI faces LEFT) ------------
 pi_w = 88.9; pi_h = 57.2; pi_hole_dx = 58; pi_hole_dy = 49;
@@ -105,6 +108,9 @@ module top_lid(){
                 }
                 translate([ex, ey, wall]) post(ear_h, 9, disp_screw_d);
             }
+            // ReSpeaker mounting bosses (3 holes) hanging below the lid.
+            for(s = mic_screws)
+                translate([s[0]*in, mic_cy + s[1]*in, -6]) cylinder(h=6+wall, d=6);
         }
         // Speaker dish (flat) + cable hole + grille at the back.
         translate([0, mic_cy, wall-mic_recess_d]) cylinder(h=mic_recess_d+1, d=mic_dia+tol);
@@ -112,6 +118,9 @@ module top_lid(){
         for(ring=[1:4]) for(a=[0:360/(ring*6):359])
             rotate([0,0,a]) translate([0,mic_cy,-1])
                 translate([ring*(mic_dia/2/5),0,0]) cylinder(h=wall+2, d=3);
+        // ReSpeaker screw pilot holes at the 3 given coordinates.
+        for(s = mic_screws)
+            translate([s[0]*in, mic_cy + s[1]*in, -8]) cylinder(h=wall+10, d=mic_screw_d);
         // Cable slot between display and speaker.
         translate([0, slot_cy, -1]) boxZ(30, 9, wall+2, 4);
     }
