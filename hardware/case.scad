@@ -79,15 +79,28 @@ pi_cx = 0;
 pi_cy = mic_cy;
 
 // ---------------------------------------------------------------------------
-//  PORTS — two big openings so EVERY Pi port is reachable (no fiddly per-port
-//  alignment). Orient the Pi so its two port edges face the back (+Y) and
-//  right (+X) walls; the wide slots expose the whole port row.
+//  PORTS — individual holes matching the Pi 4.
+//
+//  ORIENTATION (important): the Pi lies on the floor, chips facing UP, with
+//  its HDMI/power edge toward the BACK (+Y) wall.  On a Pi 4 that puts the
+//  USB/Ethernet edge on the LEFT (-X) wall.  Insert the Pi that way.
+//
+//  If a whole row comes out mirrored left-for-right, just flip its toggle
+//  below — no other change needed.
 // ---------------------------------------------------------------------------
-port_z    = wall + pi_standoff_h + 5;   // vertical center of the openings
-back_slot_w  = pi_w * 0.85;             // spans the power/HDMI/audio row
-back_slot_h  = 15;
-right_slot_w = pi_h * 0.80;             // spans the USB/Ethernet row
-right_slot_h = 20;
+flip_back = false;   // set true if the HDMI/power row is mirrored
+flip_left = false;   // set true if the USB/Ethernet row is mirrored
+
+port_z = wall + pi_standoff_h + 5;   // vertical center of the openings
+
+// [offset-from-corner, width-along-edge, height]  (Pi 4, mm)
+back_ports = [ [ 7.7, 12, 8],   // USB-C power
+               [26.0, 9, 8],    // micro-HDMI 0
+               [39.5, 9, 8],    // micro-HDMI 1
+               [54.0, 9, 9] ];  // 3.5 mm AV
+left_ports = [ [10.5, 17, 15],  // Ethernet
+               [29.0, 16, 18],  // USB 3.0 (double)
+               [47.0, 16, 18] ]; // USB 2.0 (double)
 
 // ---------------------------------------------------------------------------
 //  HELPERS
@@ -99,6 +112,22 @@ module rrect(w, h, d, r) {
 module post(h, od, hole_d) {
     difference() { cylinder(h = h, d = od);
         translate([0, 0, 1.5]) cylinder(h = h, d = hole_d); }
+}
+// Holes in the BACK (+Y) wall, offsets measured along the Pi's HDMI edge.
+module cut_back_ports() {
+    for (p = back_ports) {
+        x = flip_back ? pi_cx + pi_w/2 - p[0] : pi_cx - pi_w/2 + p[0];
+        translate([x, outer_d/2 - wall/2, port_z])
+            cube([p[1], wall*2 + 2, p[2]], center = true);
+    }
+}
+// Holes in the LEFT (-X) wall, offsets measured along the Pi's USB edge.
+module cut_left_ports() {
+    for (p = left_ports) {
+        y = flip_left ? pi_cy + pi_h/2 - p[0] : pi_cy - pi_h/2 + p[0];
+        translate([-outer_w/2 + wall/2, y, port_z])
+            cube([wall*2 + 2, p[1], p[2]], center = true);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -117,6 +146,14 @@ module base_tray() {
                 for (sx = [-1, 1], sy = [-1, 1])
                     translate([sx*pi_hole_dx/2, sy*pi_hole_dy/2, 0])
                         post(pi_standoff_h, 6, pi_screw_d);
+            // Corner guides that cradle the Pi so it drops into one spot.
+            translate([pi_cx, pi_cy, wall])
+                for (sx = [-1, 1], sy = [-1, 1])
+                    translate([sx*(pi_w/2 + tol), sy*(pi_h/2 + tol), 0])
+                        // small L made from two thin blocks at each corner
+                        for (d = [[ -sx*3, 0, 1.6, 8 ], [ 0, -sy*3, 8, 1.6 ]])
+                            translate([d[0], d[1], 0])
+                                cube([d[2], d[3], pi_standoff_h + 5], center = true);
             // Seat lip for the lid.
             difference() {
                 rrect(inner_w, inner_d, inner_h + wall, grip_r - wall);
@@ -124,12 +161,9 @@ module base_tray() {
                 translate([0,0,-1]) rrect(inner_w, inner_d, inner_h - 2, grip_r - wall);
             }
         }
-        // Big port opening on the BACK (+Y) wall — power / HDMI / audio row.
-        translate([pi_cx, outer_d/2 - wall/2, port_z])
-            cube([back_slot_w, wall*2 + 2, back_slot_h], center = true);
-        // Big port opening on the RIGHT (+X) wall — USB / Ethernet row.
-        translate([outer_w/2 - wall/2, pi_cy, port_z])
-            cube([wall*2 + 2, right_slot_w, right_slot_h], center = true);
+        // Individual port holes (Pi 4).
+        cut_back_ports();   // HDMI / power / audio on the back wall
+        cut_left_ports();   // USB / Ethernet on the left wall
     }
 }
 
