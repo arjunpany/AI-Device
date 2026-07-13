@@ -51,11 +51,12 @@ pi_cx = -W/2 + wall + span_x/2 + 2;
 pi_cy = -D/2 + wall + margin + span_y/2;
 
 port_z = wall + pi_standoff_h + 6;
-// Extra rectangular hole on the RIGHT (+X) wall (3/4" tall x 1" long).
+// Extra rectangular hole on the FRONT wall (same wall as the Pi's bottom
+// ports), up in the TOP-RIGHT area. 3/4" tall x 1" long.
 extra_hole_h   = 0.75*in;       // 19.05 tall
-extra_hole_len = 1.0*in;        // 25.4  long (along the length)
-extra_hole_y = D/4;             // position along the length (toward the back)
-extra_hole_z = inner_h - 10;    // height up the wall (near the top)
+extra_hole_len = 1.0*in;        // 25.4  long (across, along X)
+extra_hole_x = W/2 - 16;        // toward the right
+extra_hole_z = inner_h - 10;    // near the top
 // Front (bottom) opening: one hole 2.1" wide x 3/4" tall.
 front_hole_w = 2.1*in;   // 53.3
 front_hole_h = 0.75*in;  // 19.05
@@ -87,9 +88,9 @@ module base_tray(){
             boxZ(W, D, inner_h+wall, edge_r);
             translate([0,0,wall]) boxZ(W-2*wall, D-2*wall, inner_h+1, edge_r-wall);
             cut_front(); cut_left();
-            // 3/4" tall x 1" long hole on the right wall.
-            translate([W/2, extra_hole_y, extra_hole_z])
-                cube([wall*3, extra_hole_len, extra_hole_h], center=true);
+            // 3/4" tall x 1" long hole on the FRONT wall, top-right.
+            translate([extra_hole_x, -D/2, extra_hole_z])
+                cube([extra_hole_len, wall*3, extra_hole_h], center=true);
         }
         translate([pi_cx, pi_cy, wall])
             for(sx=[-1,1],sy=[-1,1])
