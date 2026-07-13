@@ -22,8 +22,8 @@ inner_h = H - 2*wall;
 
 // --- display (landscape, overhangs the width; screws to 4 corner ears) ----
 disp_x = 120.7; disp_y = 74.7;               // board size
-hole_dx = 4.4375*in;                         // 112.7  side-to-side screw spacing (4 7/16")
-hole_dy = 65;                                // front-back screw spacing (VERIFY)
+hole_dx = 4.875*in;                          // 123.8  side-to-side screw spacing (4 7/8")
+hole_dy = 3.875*in;                          // 98.4   front-back screw spacing (3 7/8")
 disp_screw_d = 2.8;
 ear_h = 5;                                   // small standoff under the display corners
 
@@ -36,7 +36,8 @@ pi_standoff_h = 4; pi_screw_d = 2.5;
 span_x = pi_h; span_y = pi_w; hole_x = pi_hole_dy; hole_y = pi_hole_dx;
 
 // --- placement ------------------------------------------------------------
-disp_cy = -D/2 + margin + disp_y/2;          // display toward the front
+// placed so both front/back ears stay inside the front wall
+disp_cy = -D/2 + margin + hole_dy/2;         // display toward the front
 mic_cy  =  D/2 - margin - mic_dia/2;          // speaker at the back
 slot_cy = disp_cy + disp_y/2 + 8;
 pi_cx = 0; pi_cy = -D/2 + wall + margin + span_y/2;
