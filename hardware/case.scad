@@ -57,9 +57,10 @@ extra_hole_h   = 0.75*in;       // 19.05 tall
 extra_hole_len = 1.0*in;        // 25.4  long (across, along X)
 extra_hole_x = W/2 - 16;        // toward the right
 extra_hole_z = inner_h - 10;    // near the top
-// Second hole on the RIGHT (+X) wall (same 3/4" x 1"), mid-height, front-ish.
-extra2_y = -20;                 // along the length (toward the front)
-extra2_z = inner_h/2;           // mid-height
+// Second hole on the RIGHT (+X) wall (same 3/4" x 1"): centered on the
+// display front-to-back, and pushed to the very top of the wall.
+extra2_y = disp_cy;                              // centered on the display
+extra2_z = inner_h + wall - extra_hole_h/2;      // flush with the top edge
 // Front (bottom) opening: one hole 2.1" wide x 3/4" tall.
 front_hole_w = 2.1*in;   // 53.3
 front_hole_h = 0.75*in;  // 19.05
