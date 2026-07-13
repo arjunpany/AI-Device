@@ -31,7 +31,7 @@ ear_h = 5;                                   // small standoff under the display
 mic_dia = 2.75*in; mic_recess_d = 0.0625*in; mic_cable_d = 12;  // 2 3/4" dia, 1/16" recess
 mic_screw_d = 2.4;                            // pilot for the ReSpeaker screws
 // ReSpeaker screw holes, relative to the speaker center (inches).
-mic_screws = [ [-0.78125, 0.4375], [0.78125, 0.4375], [-0.34375, -1.0625] ];
+mic_screws = [ [-0.78125, 0.4375], [0.78125, 0.4375], [0.34375, -1.0625] ];
 
 // --- Pi 4 (rotated: USB/LAN faces FRONT, power/HDMI faces LEFT) ------------
 pi_w = 88.9; pi_h = 57.2; pi_hole_dx = 58; pi_hole_dy = 49;
