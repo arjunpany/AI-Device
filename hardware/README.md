@@ -25,15 +25,28 @@ A parametric enclosure for the **Raspberry Pi 5 + 5" HDMI display + ReSpeaker**.
 - **Back shell:** print open-face down — no supports needed
 - **Bezel:** print face-down; the screw/retaining posts may want light supports
 
+## Two parts
+- **base** — the tray: floor, walls, Pi standoffs, and the port cutouts.
+- **lid** — the top: holds the screen and the ReSpeaker (both facing up) and
+  lifts off for wiring.
+
 ## Assembly
-1. **Screw the 5" display onto the front** — line its mounting holes up with
-   the four posts behind the screen opening and drive in short screws.
-2. **Screw the Pi 5** onto the four standoffs inside the box (M2.5).
-3. **Rest the ReSpeaker in the round recess on the top surface**; route its USB
-   cable down through the cable hole into the box and into a Pi USB port.
-4. Connect HDMI + USB between the display and the Pi.
-5. (Optional) Screw the `backcover` panel onto the open back, or leave it open
-   for airflow and easy access.
+1. **Screw the Pi onto the standoffs** in the base tray.
+2. **Fit the 5" display into the lid** — it drops into the pocket from below,
+   screen facing up through the opening; screw it to the four posts.
+3. **Rest the ReSpeaker in the dish** on the lid; route its USB cable down
+   through the hole into the box.
+4. Run the display's HDMI/USB/power and the mic USB down into the base and plug
+   them into the Pi. Route external cables (power, etc.) out through the wall
+   **port cutouts** and grommet holes.
+5. **Drop the lid onto the base.** The rim locates it; add a little tape or a
+   couple of screws if you want it fixed.
+
+## Fitting the ports
+The wall openings are big and generous, but their positions (`right_port_*`,
+`back_port_*`, `port_z`) still need to match where your Pi's ports actually sit.
+Print the base first, set the Pi in place, see where the ports land, and nudge
+those numbers before the final print.
 
 ## Important
 This is a **starting-point design** — the port cutouts and sizes almost

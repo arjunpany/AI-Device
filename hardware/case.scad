@@ -1,70 +1,84 @@
 // ============================================================================
-//  AI Lecture Note-Taker — BIG enclosure
-//    * Roomy box that houses the Raspberry Pi 5
-//    * Front face with a screen opening + screw posts to SCREW the display in
-//    * Flat top with a recess where the ReSpeaker RESTS on the surface
-//    * Open back for easy wiring (optional screw-on back cover included)
+//  AI Lecture Note-Taker — CONSOLE enclosure
+//    * Flat box that sits on a desk
+//    * TOP LID holds the 5" screen AND the ReSpeaker, both facing up
+//    * BASE TRAY holds the Pi with plenty of room for cables
+//    * Port cutouts in the walls so you can plug into ALL the Pi's ports
+//    * Cable pass-through holes + open-underside routing
+//    * Lid lifts off for wiring
 //
 //  HOW TO USE
 //    1. Install OpenSCAD (free): https://openscad.org
-//    2. Open this file.  MEASURE your boards and edit the USER DIMENSIONS.
-//    3. Set PART = "case" -> press F6 -> File > Export > Export as STL.
-//       (Optionally PART = "backcover" for a closing panel.)
+//    2. Open this file.  MEASURE your boards and edit USER DIMENSIONS.
+//    3. Export each part:  set PART="base" -> F6 -> Export STL;
+//                          set PART="lid"  -> F6 -> Export STL.
 //    4. Print.  PLA/PETG, 0.2 mm, 3 walls, 15-20% infill.
 // ============================================================================
 
-PART = "case";            // "case", "backcover", or "both" (preview)
+PART = "both";            // "base", "lid", or "both" (preview side by side)
 $fn = 64;
 
 // ---------------------------------------------------------------------------
-//  USER DIMENSIONS — measure your hardware with calipers and edit these
+//  USER DIMENSIONS — measure your hardware and edit these
 // ---------------------------------------------------------------------------
 
-// ---- 5" display ----
+// ---- 5" display (mounted in the LID, screen facing up) ----
 disp_w        = 121;      // display board width  (mm)
 disp_h        = 78;       // display board height (mm)
-screen_w      = 110;      // visible screen width  (opening in the front)
+disp_thick    = 5;        // board thickness incl. rear components
+screen_w      = 110;      // visible screen width  (the opening in the lid)
 screen_h      = 62;       // visible screen height
-disp_hole_dx  = 111;      // display mounting-hole horizontal spacing
-disp_hole_dy  = 68;       // display mounting-hole vertical spacing
-disp_screw_d  = 2.8;      // clearance for M2.5/M3 display screws into posts
-post_h        = 8;        // how far the display sits off the front inner wall
+disp_hole_dx  = 111;      // display mounting-hole spacing, X  (0 = no posts)
+disp_hole_dy  = 68;       // display mounting-hole spacing, Y
+disp_screw_d  = 2.8;      // clearance for the display screws
 
-// ---- Raspberry Pi 5 ----
+// ---- ReSpeaker (also in the LID, resting in a dish) ----
+mic_dia       = 70;       // ReSpeaker board diameter (mm)
+mic_recess_d  = 3;        // depth of the rest dish
+mic_cable_d   = 12;       // cable pass-through under the mic
+
+// ---- Raspberry Pi (sits on the BASE floor) ----
 pi_w          = 85;
 pi_h          = 56;
 pi_hole_dx    = 58;
 pi_hole_dy    = 49;
-pi_standoff_h = 8;
+pi_standoff_h = 6;
 pi_screw_d    = 2.5;
 
-// ---- ReSpeaker (rests on TOP surface) ----
-mic_dia       = 70;       // ReSpeaker board diameter (round array) — measure
-mic_recess_d  = 3;        // depth of the rest recess on the top surface
-mic_cable_d   = 12;       // hole through the top for the mic's USB cable
-
-// ---- Case size / build ----
+// ---- Case build ----
 wall          = 3;        // wall thickness
 tol           = 0.4;      // fit tolerance
-depth         = 55;       // BIG depth: room for Pi 5 + cables behind the display
-side_margin   = 12;       // extra width/height around the display -> a big box
-corner_r      = 6;        // rounded outside corners
+margin        = 14;       // space around the display on the top
+gap           = 12;       // gap between display and mic on top
+inner_h       = 45;       // internal height: room for Pi + cables
+lid_h         = wall;     // lid plate thickness (recess adds more)
 
-// Overall size (front face sized around the display, made generously big).
-inner_w = disp_w + 2*side_margin;
-inner_h = disp_h + 2*side_margin;
-outer_w = inner_w + 2*wall;
-outer_h = inner_h + 2*wall;
+// ---- Footprint (derived so the screen + mic both fit on top) ----
+top_w   = max(disp_w, mic_dia) + 2*margin;
+top_d   = disp_h + gap + mic_dia + 2*margin;
+outer_w = top_w;
+outer_d = top_d;
+inner_w = outer_w - 2*wall;
+inner_d = outer_d - 2*wall;
+
+// On-top layout: display toward the FRONT (-Y), mic toward the BACK (+Y).
+disp_cy = -outer_d/2 + margin + disp_h/2;
+mic_cy  =  outer_d/2 - margin - mic_dia/2;
+
+// ---- PORT CUTOUTS (edit to match your Pi's port layout) ----
+// Big, generous openings so every cable fits.  Positions are the center of
+// each opening on its wall, measured from the case center.
+right_port_w  = 62;  right_port_h = 16;  right_port_cy = 0;   // +X wall (USB/LAN)
+back_port_w   = 46;  back_port_h  = 14;  back_port_cx = 0;    // +Y wall (power/HDMI)
+port_z        = wall + pi_standoff_h + 3;  // height of port centers off the floor
 
 // ---------------------------------------------------------------------------
 //  HELPERS
 // ---------------------------------------------------------------------------
 module rrect(w, h, d, r) {
-    linear_extrude(d)
-        offset(r = r) offset(delta = -r)
-            square([w, h], center = true);
+    linear_extrude(d) offset(r = r) offset(delta = -r)
+        square([w, h], center = true);
 }
-
 module post(h, od, hole_d) {
     difference() {
         cylinder(h = h, d = od);
@@ -73,87 +87,101 @@ module post(h, od, hole_d) {
 }
 
 // ---------------------------------------------------------------------------
-//  MAIN CASE
-//  Oriented so the FRONT face (with the screen) is at Z = 0, and the box
-//  extends back to Z = depth.  The open side faces +Z (the back).
+//  BASE TRAY — floor + walls + Pi standoffs + port cutouts
 // ---------------------------------------------------------------------------
-module main_case() {
+module base_tray() {
     difference() {
         union() {
-            // Solid outer shell, then hollowed.
+            // Outer shell with a floor, open top.
             difference() {
-                rrect(outer_w, outer_h, depth + wall, corner_r);
+                rrect(outer_w, outer_d, inner_h + wall, 6);
                 translate([0, 0, wall])
-                    rrect(inner_w, inner_h, depth + 1, corner_r);
+                    rrect(inner_w, inner_d, inner_h + 1, 4);
             }
-
-            // ---- Display screw posts on the inside of the front wall ----
-            translate([0, 0, wall])
-            for (sx = [-1, 1], sy = [-1, 1])
-                translate([sx*disp_hole_dx/2, sy*disp_hole_dy/2, 0])
-                    post(post_h, 7, disp_screw_d);
-
-            // ---- Pi 5 standoffs on the inside back-left area of the floor ----
-            // Mounted on the front inner wall, deeper than the display posts so
-            // the Pi sits behind the display.
-            translate([0, -inner_h/4, wall])
-            for (sx = [-1, 1], sy = [-1, 1])
-                translate([sx*pi_hole_dx/2, sy*pi_hole_dy/2, 0])
-                    post(pi_standoff_h, 6, pi_screw_d);
+            // Pi standoffs on the floor (shifted toward the front-left so the
+            // back-right stays clear for cable routing).
+            translate([-inner_w/2 + pi_w/2 + 6, -inner_d/2 + pi_h/2 + 6, wall])
+                for (sx = [-1, 1], sy = [-1, 1])
+                    translate([sx*pi_hole_dx/2, sy*pi_hole_dy/2, 0])
+                        post(pi_standoff_h, 6, pi_screw_d);
+            // Lip around the top rim for the lid to seat on.
+            difference() {
+                rrect(inner_w, inner_d, inner_h + wall, 4);
+                translate([0, 0, -1]) rrect(inner_w - 2*3, inner_d - 2*3, inner_h + wall + 2, 3);
+                translate([0, 0, -1]) rrect(inner_w, inner_d, inner_h - 2, 4);
+            }
         }
 
-        // ---- Screen opening in the front wall ----
-        translate([0, 0, -1])
-            rrect(screen_w, screen_h, wall + 2, 3);
+        // ---- Right wall port opening (USB / Ethernet cluster) ----
+        translate([outer_w/2 - wall - 1, right_port_cy, port_z])
+            cube([wall + 4, right_port_w, right_port_h], center = true);
 
-        // ---- ReSpeaker rest recess + cable hole on the TOP wall ----
-        // Top wall is at Y = +outer_h/2; recess cut from outside inward.
-        translate([0, outer_h/2 - wall + 0.01, depth/2 + wall])
-            rotate([-90, 0, 0]) {
-                cylinder(h = mic_recess_d + 0.02, d = mic_dia + tol);   // rest dish
-                translate([0, 0, -wall]) cylinder(h = wall*2, d = mic_cable_d); // cable hole
-            }
+        // ---- Back wall port opening (power / HDMI) ----
+        translate([back_port_cx, outer_d/2 - wall - 1, port_z])
+            rotate([0, 0, 90])
+                cube([wall + 4, back_port_w, back_port_h], center = true);
 
-        // ---- Port cutouts on the RIGHT wall (adjust to your Pi layout) ----
-        translate([outer_w/2 - wall - 1, -14, wall + 6]) cube([wall + 4, 12, 8]); // USB-C
-        translate([outer_w/2 - wall - 1, 4, wall + 6])  cube([wall + 4, 28, 10]); // HDMI/USB
+        // ---- Left wall cable/grommet holes ----
+        for (i = [-1, 0, 1])
+            translate([-outer_w/2 - 1, i*20, port_z])
+                rotate([0, 90, 0]) cylinder(h = wall + 4, d = 12);
 
-        // ---- USB-A slot on the LEFT wall (ReSpeaker / keyboard) ----
-        translate([-outer_w/2 - 3, -18, wall + 6]) cube([wall + 4, 34, 12]);
-
-        // ---- Cable slot on the BOTTOM wall ----
-        translate([-16, -outer_h/2 - 3, wall + 6]) cube([32, wall + 4, 10]);
-
-        // ---- Back-cover screw holes in the four corner walls ----
-        for (sx = [-1, 1], sy = [-1, 1])
-            translate([sx*(inner_w/2 - 4), sy*(inner_h/2 - 4), depth - 6])
-                cylinder(h = 12, d = 2.5);
+        // ---- Floor vents ----
+        for (i = [-2:2])
+            translate([i*14, -inner_d/4, -0.5])
+                rrect(5, inner_d*0.4, wall + 1, 2);
     }
 }
 
 // ---------------------------------------------------------------------------
-//  OPTIONAL BACK COVER (screws onto the open back)
+//  TOP LID — screen opening + display pocket, mic dish, both facing up
 // ---------------------------------------------------------------------------
-module back_cover() {
+module top_lid() {
     difference() {
-        rrect(outer_w, outer_h, wall, corner_r);
-        // Vent slots.
-        for (i = [-3:3])
-            translate([i*12, 0, -1])
-                rrect(5, inner_h*0.6, wall + 2, 2);
-        // Corner screw holes to match the case.
-        for (sx = [-1, 1], sy = [-1, 1])
-            translate([sx*(inner_w/2 - 4), sy*(inner_h/2 - 4), -1])
-                cylinder(h = wall + 2, d = 3.2);
+        union() {
+            // Lid plate.
+            rrect(outer_w, outer_d, wall, 6);
+            // Drop-in rim that locates the lid into the base opening.
+            translate([0, 0, -6])
+                difference() {
+                    rrect(inner_w - tol, inner_d - tol, 6, 4);
+                    translate([0, 0, -1]) rrect(inner_w - 2*3 - tol, inner_d - 2*3 - tol, 8, 3);
+                }
+            // Display screw posts hanging under the lid.
+            if (disp_hole_dx > 0)
+                translate([0, disp_cy, -disp_thick - 2])
+                    for (sx = [-1, 1], sy = [-1, 1])
+                        translate([sx*disp_hole_dx/2, sy*disp_hole_dy/2, 0])
+                            post(disp_thick + 2, 7, disp_screw_d);
+        }
+
+        // ---- Screen opening (screen shows through, facing up) ----
+        translate([0, disp_cy, -1])
+            rrect(screen_w, screen_h, wall + 2, 3);
+        // Pocket underneath so the display board rests flush.
+        translate([0, disp_cy, wall - disp_thick])
+            rrect(disp_w + 2*tol, disp_h + 2*tol, disp_thick + 1, 2);
+
+        // ---- ReSpeaker dish + grille + cable hole (facing up) ----
+        translate([0, mic_cy, wall - mic_recess_d])
+            cylinder(h = mic_recess_d + 1, d = mic_dia + tol);      // rest dish
+        translate([0, mic_cy, -1]) cylinder(h = wall + 2, d = mic_cable_d); // cable hole
+        // sound holes ring
+        for (ring = [1:4])
+            for (a = [0 : 360/(ring*6) : 359])
+                rotate([0, 0, a])
+                    translate([0, mic_cy, -1])
+                        translate([ring*(mic_dia/2/5), 0, 0])
+                            cylinder(h = wall + 2, d = 3);
     }
 }
 
 // ---------------------------------------------------------------------------
 //  RENDER
 // ---------------------------------------------------------------------------
-if (PART == "case") main_case();
-else if (PART == "backcover") back_cover();
+if (PART == "base") base_tray();
+else if (PART == "lid") top_lid();
 else {
-    main_case();
-    translate([0, outer_h + 20, 0]) back_cover();
+    base_tray();
+    translate([outer_w + 20, 0, 0]) top_lid();
 }
