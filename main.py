@@ -214,6 +214,27 @@ def load_email_config():
     return addr, pw, host, port
 
 
+# Interactive "ask your notes" chat page. Override with STUDYCHAT_URL.
+STUDYCHAT_URL = os.environ.get(
+    "STUDYCHAT_URL",
+    "https://claude.ai/code/artifact/915f29e9-8220-4bc9-819f-13fd8c04640c",
+)
+
+
+def build_chat_link(text):
+    """Build a link to the chat page with the notes encoded into the URL,
+    so the page can load them with no server needed."""
+    import base64
+    import json
+    payload = json.dumps({
+        "t": _derive_title(text),
+        "d": datetime.datetime.now().strftime("%b %d, %Y"),
+        "c": text,
+    })
+    b64 = base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii")
+    return STUDYCHAT_URL + "#n=" + b64
+
+
 def send_note_email(path, recipient):
     """Email a saved note (as body + attachment) to recipient."""
     addr, pw, host, port = load_email_config()
@@ -226,11 +247,20 @@ def send_note_email(path, recipient):
         body = f.read()
     title = _derive_title(body)
 
+    # Append the interactive-chat link so the student can ask questions.
+    chat_link = build_chat_link(body)
+    email_body = (
+        body
+        + "\n\n" + ("-" * 40) + "\n"
+        + "💬 Ask questions about these notes:\n"
+        + chat_link + "\n"
+    )
+
     msg = EmailMessage()
     msg["Subject"] = f"Notes: {title}"
     msg["From"] = addr
     msg["To"] = recipient
-    msg.set_content(body)
+    msg.set_content(email_body)
     msg.add_attachment(body.encode("utf-8"), maintype="text",
                        subtype="plain", filename=os.path.basename(path))
 
