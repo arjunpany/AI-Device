@@ -264,10 +264,34 @@ def send_note_email(path, recipient):
     msg.add_attachment(body.encode("utf-8"), maintype="text",
                        subtype="plain", filename=os.path.basename(path))
 
-    with smtplib.SMTP(host, port, timeout=30) as server:
-        server.starttls()
-        server.login(addr, pw)
-        server.send_message(msg)
+    import ssl
+    ctx = ssl.create_default_context()
+    # Try SSL on 465 first (most reliable on a Pi), then STARTTLS on 587.
+    # Short timeout so it fails fast with a clear message instead of hanging.
+    attempts = [("ssl", 465), ("tls", 587)]
+    # If the user pinned a specific port, honor it first.
+    if port == 465:
+        attempts = [("ssl", 465), ("tls", 587)]
+    elif port == 587:
+        attempts = [("tls", 587), ("ssl", 465)]
+    last_err = None
+    for mode, p in attempts:
+        try:
+            if mode == "ssl":
+                with smtplib.SMTP_SSL(host, p, timeout=15, context=ctx) as server:
+                    server.login(addr, pw)
+                    server.send_message(msg)
+            else:
+                with smtplib.SMTP(host, p, timeout=15) as server:
+                    server.ehlo()
+                    server.starttls(context=ctx)
+                    server.login(addr, pw)
+                    server.send_message(msg)
+            return  # success
+        except Exception as e:
+            last_err = e
+    raise RuntimeError(f"Couldn't send ({type(last_err).__name__}). "
+                       f"Check WiFi and the app password.")
 
 
 # --------------------------------------------------------------------------
