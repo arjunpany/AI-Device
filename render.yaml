@@ -1,0 +1,15 @@
+# Render Blueprint — one-click deploy of the StudyChat notes server.
+# In Render: New → Blueprint → connect this repo → it reads this file.
+# Then set the ANTHROPIC_API_KEY env var (it's marked sync:false so you enter it).
+services:
+  - type: web
+    name: studychat
+    runtime: python
+    plan: free
+    buildCommand: pip install -r server/requirements.txt
+    startCommand: gunicorn --chdir server --bind 0.0.0.0:$PORT app:app
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: NOTES_MODEL
+        value: claude-haiku-4-5

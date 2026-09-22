@@ -214,16 +214,45 @@ def load_email_config():
     return addr, pw, host, port
 
 
-# Interactive "ask your notes" chat page. Override with STUDYCHAT_URL.
+# Your deployed StudyChat server (e.g. https://studychat.onrender.com).
+# When set, notes are uploaded there and the email gets a short link.
+NOTES_SERVER_URL = os.environ.get("NOTES_SERVER_URL", "").rstrip("/")
+
+# Fallback chat page (notes encoded in the URL — only good for short notes).
 STUDYCHAT_URL = os.environ.get(
     "STUDYCHAT_URL",
     "https://claude.ai/code/artifact/915f29e9-8220-4bc9-819f-13fd8c04640c",
 )
 
 
+def upload_note(text):
+    """Upload the note to the StudyChat server and return its short URL.
+    Returns None if no server is configured or the upload fails."""
+    if not NOTES_SERVER_URL:
+        return None
+    import json
+    import urllib.request
+    try:
+        data = json.dumps({"title": _derive_title(text), "content": text}).encode("utf-8")
+        req = urllib.request.Request(
+            NOTES_SERVER_URL + "/api/notes", data=data,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return json.load(r).get("url")
+    except Exception:
+        return None
+
+
 def build_chat_link(text):
-    """Build a link to the chat page with the notes encoded into the URL,
-    so the page can load them with no server needed."""
+    """Return a link to open these notes in the chat page.
+
+    Prefers the hosted server (short link, works for anyone). Falls back to
+    encoding the notes into the URL when no server is set up.
+    """
+    hosted = upload_note(text)
+    if hosted:
+        return hosted
     import base64
     import json
     payload = json.dumps({
