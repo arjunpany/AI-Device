@@ -745,6 +745,18 @@ class NoteDisplayWindow(OverlayFrame):
         self._render_formatted(text)
         self.text_area.configure(state=tk.DISABLED)
 
+    def show_online_link(self, url):
+        """Show the website link for these notes at the top of the window."""
+        if getattr(self, "_link_lbl", None):
+            self._link_lbl.configure(text="🌐 Online: " + url)
+            return
+        self._link_lbl = tk.Label(
+            self, text="🌐 Online: " + url, font=("Courier New", 11),
+            bg="#181825", fg="#89b4fa", anchor="w", padx=12, pady=6,
+            wraplength=self.winfo_screenwidth() - 40, justify="left",
+        )
+        self._link_lbl.pack(fill=tk.X, side=tk.BOTTOM)
+
     def _save_notes(self):
         if not self._raw_text.strip():
             return
@@ -1470,6 +1482,11 @@ class App(tk.Tk):
             notes = generate_notes(transcript, stream_callback)
             self._notes_queue.put(("notes_done", notes))
 
+            # Auto-publish to the website so you can just open it in a browser.
+            url = upload_note(notes)
+            if url:
+                self._notes_queue.put(("online_link", url))
+
         except Exception as e:
             self._notes_queue.put(("error", f"Error: {e}"))
 
@@ -1516,6 +1533,12 @@ class App(tk.Tk):
                     if self._notes_window:
                         self._notes_window.set_full_text(payload)
                     self.start_btn.configure(state=tk.NORMAL)
+
+                elif msg_type == "online_link":
+                    self._log(f"Online: {payload}")
+                    self._set_status("Posted to the website ✓", "#a6e3a1")
+                    if self._notes_window:
+                        self._notes_window.show_online_link(payload)
 
         except queue.Empty:
             pass

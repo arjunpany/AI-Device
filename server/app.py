@@ -122,7 +122,39 @@ def page(note_id):
 
 @app.get("/")
 def home():
-    return "StudyChat is running. Notes open at /n/&lt;id&gt;.", 200
+    with _db() as conn:
+        rows = conn.execute(
+            "SELECT id, title, created FROM notes ORDER BY created DESC LIMIT 300"
+        ).fetchall()
+    notes = [{"id": r[0], "title": r[1],
+              "date": time.strftime("%b %d, %Y", time.localtime(r[2] or 0))}
+             for r in rows]
+    return render_template_string(HOME, notes=notes)
+
+
+HOME = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>StudyChat</title>
+<style>
+ :root{--bg:#f4f6fb;--panel:#fff;--ink:#1a1c25;--muted:#5c6273;--line:#d9deea;--accent:#3b6fd6;
+  --sans:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;--mono:ui-monospace,Menlo,Consolas,monospace;}
+ @media(prefers-color-scheme:dark){:root{--bg:#0f121a;--panel:#171b26;--ink:#e6e9f2;--muted:#9aa1b4;--line:#282e3d;--accent:#5b8bf0;}}
+ *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans)}
+ header{padding:16px 20px;border-bottom:1px solid var(--line);background:var(--panel);display:flex;align-items:center;gap:12px}
+ .brand{width:34px;height:34px;border-radius:9px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:800}
+ h1{font-size:18px;margin:0}header p{margin:1px 0 0;font-size:12.5px;color:var(--muted)}
+ .wrap{max-width:800px;margin:0 auto;padding:22px 18px}
+ .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
+ a.card{display:block;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;text-decoration:none;color:inherit}
+ a.card:hover{border-color:var(--accent)}
+ a.card h3{margin:0 0 4px;font-size:15px}a.card .d{font-size:12px;color:var(--muted);font-family:var(--mono)}
+ .empty{padding:60px 20px;text-align:center;color:var(--muted)}
+</style></head><body>
+<header><div class="brand">✳</div><div><h1>StudyChat</h1><p>Your lecture notes — tap one to read and ask questions</p></div></header>
+<div class="wrap">
+{% if notes %}<div class="grid">
+{% for n in notes %}<a class="card" href="/n/{{ n.id }}"><h3>{{ n.title }}</h3><div class="d">{{ n.date }}</div></a>{% endfor %}
+</div>{% else %}<div class="empty">No notes yet. Record a lecture on your device and they'll appear here.</div>{% endif %}
+</div></body></html>"""
 
 
 PAGE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
