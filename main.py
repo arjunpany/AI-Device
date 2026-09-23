@@ -232,16 +232,20 @@ def upload_note(text):
         return None
     import json
     import urllib.request
-    try:
-        data = json.dumps({"title": _derive_title(text), "content": text}).encode("utf-8")
-        req = urllib.request.Request(
-            NOTES_SERVER_URL + "/api/notes", data=data,
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=15) as r:
-            return json.load(r).get("url")
-    except Exception:
-        return None
+    data = json.dumps({"title": _derive_title(text), "content": text}).encode("utf-8")
+    # Render's free tier can take 30-60s to wake, so use a long timeout and
+    # one retry rather than failing on a cold start.
+    for timeout in (75, 75):
+        try:
+            req = urllib.request.Request(
+                NOTES_SERVER_URL + "/api/notes", data=data,
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.load(r).get("url")
+        except Exception:
+            continue
+    return None
 
 
 def build_chat_link(text):
