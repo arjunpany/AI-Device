@@ -216,7 +216,9 @@ def load_email_config():
 
 # Your deployed StudyChat server (e.g. https://studychat.onrender.com).
 # When set, notes are uploaded there and the email gets a short link.
-NOTES_SERVER_URL = os.environ.get("NOTES_SERVER_URL", "").rstrip("/")
+NOTES_SERVER_URL = os.environ.get(
+    "NOTES_SERVER_URL", "https://studychat-s30a.onrender.com"
+).rstrip("/")
 
 # Fallback chat page (notes encoded in the URL — only good for short notes).
 STUDYCHAT_URL = os.environ.get(
