@@ -27,34 +27,72 @@ DB_PATH = os.environ.get("DB_PATH", "notes.db")
 MODEL = os.environ.get("NOTES_MODEL", "claude-haiku-4-5")
 _client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from the environment
 
+# Use Postgres (persistent) when DATABASE_URL is set — e.g. a free Neon or
+# Render Postgres database. This is what keeps notes alive across restarts
+# and sleeps. Without it we fall back to a local SQLite file, which is fine
+# for running on your own computer but is WIPED on Render's free tier every
+# time the server sleeps, so set DATABASE_URL in production.
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+USE_PG = DATABASE_URL.startswith("postgres")
+PH = "%s" if USE_PG else "?"  # SQL parameter placeholder differs by driver
+
 
 # --------------------------------------------------------------------------
-# Storage (SQLite)
+# Storage (Postgres when DATABASE_URL is set, otherwise local SQLite)
 # --------------------------------------------------------------------------
-def _db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS notes ("
-        "id TEXT PRIMARY KEY, title TEXT, content TEXT, created REAL)"
-    )
-    return conn
+def _connect():
+    if USE_PG:
+        import psycopg
+        return psycopg.connect(DATABASE_URL)
+    return sqlite3.connect(DB_PATH)
+
+
+def _init_db():
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "CREATE TABLE IF NOT EXISTS notes ("
+            "id TEXT PRIMARY KEY, title TEXT, content TEXT, "
+            + ("created DOUBLE PRECISION)" if USE_PG else "created REAL)")
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _exec(sql, params=(), fetch=None):
+    """Run one statement. fetch=None (write), 'one', or 'all'."""
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        cur.execute(sql, params)
+        out = None
+        if fetch == "one":
+            out = cur.fetchone()
+        elif fetch == "all":
+            out = cur.fetchall()
+        conn.commit()
+        return out
+    finally:
+        conn.close()
 
 
 def save_note(title, content):
     note_id = secrets.token_urlsafe(5)[:7]
-    with _db() as conn:
-        conn.execute(
-            "INSERT INTO notes (id, title, content, created) VALUES (?,?,?,?)",
-            (note_id, title or "Lecture Notes", content or "", time.time()),
-        )
+    _exec(
+        "INSERT INTO notes (id, title, content, created) "
+        "VALUES ({p},{p},{p},{p})".format(p=PH),
+        (note_id, title or "Lecture Notes", content or "", time.time()),
+    )
     return note_id
 
 
 def get_note(note_id):
-    with _db() as conn:
-        row = conn.execute(
-            "SELECT id, title, content FROM notes WHERE id=?", (note_id,)
-        ).fetchone()
+    row = _exec(
+        "SELECT id, title, content FROM notes WHERE id={p}".format(p=PH),
+        (note_id,), fetch="one",
+    )
     if not row:
         return None
     return {"id": row[0], "title": row[1], "content": row[2]}
@@ -122,10 +160,10 @@ def page(note_id):
 
 @app.get("/")
 def home():
-    with _db() as conn:
-        rows = conn.execute(
-            "SELECT id, title, created FROM notes ORDER BY created DESC LIMIT 300"
-        ).fetchall()
+    rows = _exec(
+        "SELECT id, title, created FROM notes ORDER BY created DESC LIMIT 300",
+        fetch="all",
+    ) or []
     notes = [{"id": r[0], "title": r[1],
               "date": time.strftime("%b %d, %Y", time.localtime(r[2] or 0))}
              for r in rows]
@@ -237,6 +275,9 @@ async function send(){const inp=document.getElementById('q');const q=inp.value.t
 document.getElementById('send').onclick=send;
 document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')send();});
 </script></body></html>"""
+
+
+_init_db()  # ensure the notes table exists (runs under gunicorn too)
 
 
 if __name__ == "__main__":
