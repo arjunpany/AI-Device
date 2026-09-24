@@ -17,6 +17,10 @@ export KIOSK=1   # fullscreen, no window chrome
 # `python3 main.py --check-audio` to see the exact names.
 export AUDIO_DEVICE="ReSpeaker"
 
+# Upload notes to your StudyChat website so they appear in a browser.
+# Change this to your own Render URL if different.
+export NOTES_SERVER_URL="https://studychat-s30a.onrender.com"
+
 # Disable screen blanking / power saving so the display stays on (X11 only;
 # harmless no-op under Wayland, so errors are silenced).
 if command -v xset >/dev/null 2>&1; then
